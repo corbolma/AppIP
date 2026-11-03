@@ -1,0 +1,5 @@
+# Binari compilati: si scaricano dalle Releases
+*.exe
+dist/
+*.new
+*.pdb
