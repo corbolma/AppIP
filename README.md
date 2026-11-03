@@ -15,6 +15,15 @@
   <a href="https://github.com/corbolma/AppIP/issues">Segnala un problema</a>
 </p>
 
+<p align="center">
+  <img src="docs/widget-scuro.png" alt="AppIP, tema scuro" width="330">
+  &nbsp;
+  <img src="docs/widget-chiaro-vpn.png" alt="AppIP, tema chiaro con VPN attiva" width="330">
+  &nbsp;
+  <img src="docs/widget-compatto.png" alt="AppIP, modalità compatta" width="270">
+</p>
+<p align="center"><sub>Tema scuro · tema chiaro con VPN attiva · modalità compatta (dati di esempio)</sub></p>
+
 ---
 
 ## Italiano

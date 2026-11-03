@@ -35,6 +35,15 @@ namespace AppIP
         [STAThread]
         static void Main(string[] args)
         {
+            // /demo [light] [vpn] [compact]: finestra con dati fittizi per gli screenshot, indipendente dall'istanza normale
+            if (args.Length > 0 && args[0].Equals("/demo", StringComparison.OrdinalIgnoreCase))
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                Application.Run(new WidgetForm("demo", args));
+                return;
+            }
+
             try { SetCurrentProcessExplicitAppUserModelID(AppUserModelId); } catch { }
             string cmd = args.Length > 0 ? args[0].TrimStart('/', '-').ToLowerInvariant() : "front";
             if (cmd != "exit" && cmd != "topmost") cmd = "front";
@@ -219,7 +228,42 @@ namespace AppIP
         Point downPt;
         Rectangle flashRect = Rectangle.Empty;
 
-        public WidgetForm(string startCmd)
+        bool demo;
+
+        // Dati fittizi per gli screenshot (indirizzi di documentazione RFC 5737 / reti private di esempio).
+        void FillDemo(bool withVpn)
+        {
+            hostName = "DESKTOP-APPIP";
+            domain = "esempio.local";
+            publicIp = "203.0.113.42";
+            var list = new List<NetLine>
+            {
+                new NetLine { Id = "demo-wifi", Name = "Wi-Fi", IPv4 = "192.168.1.50/24", IPv4Plain = "192.168.1.50",
+                    Gateway = "192.168.1.1", HasGateway = true, Dns = "192.168.1.1, 1.1.1.1", Mac = "00:11:22:33:44:55",
+                    IsWifi = true, WifiSsid = "Ufficio-WiFi", WifiSignal = 82 },
+                new NetLine { Id = "demo-eth", Name = "Ethernet", IPv4 = "10.0.0.25/24", IPv4Plain = "10.0.0.25",
+                    Gateway = "-", Dns = "10.0.0.10", Mac = "00:11:22:33:44:66" }
+            };
+            if (withVpn)
+                list.Add(new NetLine { Id = "demo-vpn", Name = "WireGuard", IPv4 = "10.8.0.6/32", IPv4Plain = "10.8.0.6",
+                    Gateway = "-", Dns = "10.8.0.1", Mac = "-", IsVpn = true });
+            allLines = list;
+            lines = list.Where(l => !l.IsVpn).ToList();
+            primary = lines[0];
+            vpn = allLines.FirstOrDefault(l => l.IsVpn);
+
+            var rnd = new Random(7);
+            rxHist.Clear(); txHist.Clear();
+            for (int i = 0; i < HistLen; i++)
+            {
+                double wave = Math.Max(0, Math.Sin(i / 6.0) + 0.6 * Math.Sin(i / 2.3 + 1));
+                rxHist.Add((180 + 900 * wave + rnd.Next(120)) * 1024);
+                txHist.Add((40 + 160 * wave + rnd.Next(40)) * 1024);
+            }
+            rxRate = rxHist[HistLen - 1]; txRate = txHist[HistLen - 1];
+        }
+
+        public WidgetForm(string startCmd, string[] demoArgs = null)
         {
             settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AppIP", "settings.txt");
 
@@ -328,6 +372,29 @@ namespace AppIP
                 if (h != null) CopyValue(h);
             };
 
+            infoTimer = new WinTimer();
+            fastTimer = new WinTimer();
+            flashTimer = new WinTimer();
+            flashTimer.Interval = 1200;
+            flashTimer.Tick += delegate { flashTimer.Stop(); flashRect = Rectangle.Empty; Invalidate(); };
+
+            if (demoArgs != null)
+            {
+                // Modalità demo: dati fittizi, nessuna impostazione letta/salvata, nessuna rete, niente tray/Jump List.
+                demo = true;
+                tray.Visible = false;
+                var opts = new HashSet<string>(demoArgs.Select(a => a.TrimStart('/', '-').ToLowerInvariant()));
+                theme = opts.Contains("light") ? "light" : "dark";
+                compact = opts.Contains("compact");
+                opacity = 100;
+                Location = new Point(60, 60);
+                FillDemo(opts.Contains("vpn"));
+                ApplyLook();
+                pingInterval = 5; gwMs = 2; netMs = 14;
+                ResizeToContent();
+                return;
+            }
+
             LoadSettings();
             ApplyLook();
             SetPingInterval(pingInterval);
@@ -339,19 +406,13 @@ namespace AppIP
 
             Load += delegate { UpdateJumpList(); };
 
-            infoTimer = new WinTimer();
             infoTimer.Interval = 10000;
             infoTimer.Tick += delegate { RefreshInfo(); };
             infoTimer.Start();
 
-            fastTimer = new WinTimer();
             fastTimer.Interval = 1000;
             fastTimer.Tick += delegate { SampleSpeed(); if (Visible) Invalidate(); };
             fastTimer.Start();
-
-            flashTimer = new WinTimer();
-            flashTimer.Interval = 1200;
-            flashTimer.Tick += delegate { flashTimer.Stop(); flashRect = Rectangle.Empty; Invalidate(); };
 
             NetworkChange.NetworkAddressChanged += delegate { lastPublicFetch = DateTime.MinValue; SafeRefresh(); };
             NetworkChange.NetworkAvailabilityChanged += delegate { lastPublicFetch = DateTime.MinValue; SafeRefresh(); };
@@ -515,6 +576,7 @@ namespace AppIP
 
         void RefreshInfo()
         {
+            if (demo) return;
             hostName = Environment.MachineName;
             try { domain = IPGlobalProperties.GetIPGlobalProperties().DomainName ?? ""; }
             catch { domain = ""; }
@@ -1213,6 +1275,7 @@ namespace AppIP
 
         void SaveSettings()
         {
+            if (demo) return;
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(settingsPath));
@@ -1236,7 +1299,7 @@ namespace AppIP
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             SaveSettings();
-            ClearJumpList();
+            if (!demo) ClearJumpList();
             SystemEvents.UserPreferenceChanged -= OnUserPrefChanged;
             tray.Visible = false;
             tray.Dispose();
