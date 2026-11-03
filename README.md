@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="icon-preview.png" alt="AppIP" width="600">
-</p>
-
 <h1 align="center">AppIP</h1>
 
 <p align="center">
