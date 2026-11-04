@@ -74,9 +74,13 @@ if traffic_token:
             days.setdefault(x["timestamp"][:10], [0, 0, 0, 0])[0:2] = [x["count"], x["uniques"]]
         for x in clones:
             days.setdefault(x["timestamp"][:10], [0, 0, 0, 0])[2:4] = [x["count"], x["uniques"]]
-        # GitHub fornisce gli ultimi 14 giorni: i valori più recenti sostituiscono quelli parziali già salvati
+        # GitHub fornisce gli ultimi 14 giorni (anche quelli prima della creazione del repo, a zero):
+        # i valori più recenti sostituiscono quelli parziali già salvati
+        created = api("repos/%s" % REPO, os.environ["GITHUB_TOKEN"])["created_at"][:10]
         for d, v in days.items():
-            traffic[(d,)] = [d] + [str(n) for n in v]
+            if d >= created:
+                traffic[(d,)] = [d] + [str(n) for n in v]
+        traffic = {k: r for k, r in traffic.items() if k[0] >= created}
         save("traffic.csv", ["data", "visite", "visitatori_unici", "clone", "clone_unici"], traffic.values())
         traffic_note = ""
     except Exception as e:  # token scaduto o senza permessi: i download vengono salvati comunque
