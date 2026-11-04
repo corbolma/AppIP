@@ -42,5 +42,11 @@ jobs:
             echo "Nessuna novità"
           else
             git commit -qm "Statistiche $(date -u +%F)"
-            git push -q origin stats
+            # GitHub ogni tanto risponde con errori temporanei: riprova fino a 4 volte
+            for i in 1 2 3 4; do
+              git push -q origin stats && break
+              [ "$i" = 4 ] && exit 1
+              echo "Push non riuscito, nuovo tentativo tra $((i * 15)) secondi"
+              sleep $((i * 15))
+            done
           fi
