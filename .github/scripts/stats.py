@@ -82,6 +82,15 @@ if traffic_token:
     except Exception as e:  # token scaduto o senza permessi: i download vengono salvati comunque
         traffic_note = "Visite e clone non aggiornati oggi: %s" % e
         print(traffic_note)
+        # Diagnostica senza rivelare il token: tipo (dal prefisso), lunghezza, messaggio di GitHub
+        kind = ("fine-grained" if traffic_token.startswith("github_pat_") else
+                "classic" if traffic_token.startswith("ghp_") else "formato sconosciuto")
+        print("TRAFFIC_TOKEN: %s, %d caratteri" % (kind, len(traffic_token)))
+        if hasattr(e, "read"):
+            try:
+                print("Risposta di GitHub: %s" % json.loads(e.read().decode()).get("message"))
+            except Exception:
+                pass
 
 # ---------- riepilogo ----------
 totals = {}
