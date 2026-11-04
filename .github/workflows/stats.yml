@@ -1,0 +1,46 @@
+name: Statistiche download
+
+# Ogni notte salva i contatori dei download delle release (e, se configurato, visite e clone)
+# nel ramo `stats`, così lo storico non si perde dopo i 14 giorni di GitHub.
+on:
+  schedule:
+    - cron: "17 3 * * *"   # 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stats
+  cancel-in-progress: false
+
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Raccogli e salva le statistiche
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TRAFFIC_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+        run: |
+          cp .github/scripts/stats.py "$RUNNER_TEMP/stats.py"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin stats >/dev/null; then
+            git checkout -B stats origin/stats
+          else
+            git checkout --orphan stats
+            git rm -rfq .
+          fi
+          python3 "$RUNNER_TEMP/stats.py"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nessuna novità"
+          else
+            git commit -qm "Statistiche $(date -u +%F)"
+            git push -q origin stats
+          fi
