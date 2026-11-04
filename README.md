@@ -17,6 +17,6 @@ Aggiornato il 2026-11-04 (UTC) dalla GitHub Action *Statistiche download*.
 
 ## Visite e clone
 
-Visite e clone non registrati: manca il secret `TRAFFIC_TOKEN`.
+Visite e clone non aggiornati oggi: HTTP Error 401: Unauthorized
 
 Dati completi: [downloads.csv](downloads.csv)
