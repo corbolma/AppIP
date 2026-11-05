@@ -32,7 +32,7 @@
 - **Wi-Fi**: nome della rete e qualità del segnale
 - **VPN** attiva, con badge e IP assegnato
 - **Ping** verso router e Internet (disattivato di default, intervallo configurabile)
-- Interfaccia in **italiano e inglese** (segue la lingua di Windows, modificabile dal menu *Lingua / Language*)
+- Interfaccia in **italiano e inglese** (segue la lingua di Windows, modificabile dal menu *Lingua / Language*); altre lingue si aggiungono con un semplice file di testo, vedi [lang/README.md](lang/README.md)
 
 ### Come si usa
 - Il widget resta **incollato al desktop** (sotto le finestre, visibile anche con Win+D). Trascinalo dove vuoi.
@@ -75,6 +75,7 @@ AppIP non raccoglie dati. Le uniche connessioni esterne sono la richiesta dell'I
 - **Privacy:** no telemetry. The only outbound requests are the public-IP lookup and, if enabled, ICMP pings.
 
 The user interface is available in **English and Italian**: it follows the Windows display language and can be changed from the menu (*Lingua / Language*).
+**Translations are welcome**: adding a language is just a text file, no coding required — see [lang/README.md](lang/README.md).
 
 ## Licenza / License
 [MIT](LICENSE)

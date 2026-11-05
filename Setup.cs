@@ -44,7 +44,7 @@ namespace AppIP.Setup
             }
             catch (Exception ex)
             {
-                if (!silent) MessageBox.Show(L.T("Errore: ", "Error: ") + ex.Message, "AppIP", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (!silent) MessageBox.Show(L.T("Errore", "Error") + ": " + ex.Message, "AppIP", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return 2;
             }
         }
@@ -281,23 +281,21 @@ namespace AppIP.Setup
             else if (installed < cur)
             {
                 action = L.T("Aggiorna", "Update");
-                infoText = L.T("Aggiornamento dalla versione " + vi + " alla " + vc + ". Le impostazioni vengono mantenute.",
-                               "Update from version " + vi + " to " + vc + ". Your settings will be kept.");
+                infoText = L.F("Aggiornamento dalla versione {0} alla {1}. Le impostazioni vengono mantenute.",
+                               "Update from version {0} to {1}. Your settings will be kept.", vi, vc);
             }
             else if (installed == cur)
             {
                 action = L.T("Reinstalla", "Reinstall");
-                infoText = L.T("La versione " + vc + " è già installata. Puoi reinstallarla (le impostazioni vengono mantenute).",
-                               "Version " + vc + " is already installed. You can reinstall it (your settings will be kept).");
+                infoText = L.F("La versione {0} è già installata. Puoi reinstallarla (le impostazioni vengono mantenute).",
+                               "Version {0} is already installed. You can reinstall it (your settings will be kept).", vc);
             }
             else
             {
                 action = L.T("Installa comunque", "Install anyway");
                 warn = true;
-                infoText = L.T("Attenzione: è installata una versione più recente (" + vi + "). Questo installer contiene la " + vc +
-                           ", più vecchia. Continuando la sostituirai.",
-                           "Warning: a newer version (" + vi + ") is installed. This installer contains the older " + vc +
-                           ". Continuing will replace it.");
+                infoText = L.F("Attenzione: è installata una versione più recente ({0}). Questo installer contiene la {1}, più vecchia. Continuando la sostituirai.",
+                           "Warning: a newer version ({0}) is installed. This installer contains the older {1}. Continuing will replace it.", vi, vc);
             }
 
             Text = action + " AppIP";
@@ -322,7 +320,7 @@ namespace AppIP.Setup
             var sub = new Label
             {
                 Text = L.T("IP, nome macchina, DNS, velocità e Wi-Fi sul desktop", "IP, computer name, DNS, speed and Wi-Fi on your desktop"), ForeColor = Color.FromArgb(220, 230, 255),
-                AutoSize = true, Location = new Point(90, 50), BackColor = Color.Transparent
+                AutoSize = true, MaximumSize = new Size(370, 0), Location = new Point(90, 50), BackColor = Color.Transparent
             };
             header.Controls.AddRange(new Control[] { pic, title, sub });
 
@@ -342,8 +340,8 @@ namespace AppIP.Setup
             cbLaunch = new CheckBox { Text = L.T("Avvia AppIP al termine", "Launch AppIP when finished"), Location = new Point(22, 212), AutoSize = true, Checked = true };
 
             lblStatus = new Label { Location = new Point(20, 262), Size = new Size(240, 20), ForeColor = Color.DimGray };
-            btnInstall = new Button { Text = action, Location = new Point(240, 256), Size = new Size(120, 30) };
-            btnCancel = new Button { Text = L.T("Annulla", "Cancel"), Location = new Point(366, 256), Size = new Size(90, 30), DialogResult = DialogResult.Cancel };
+            btnInstall = new Button { Text = action, Location = new Point(240, 256), MinimumSize = new Size(120, 30), AutoSize = true };
+            btnCancel = new Button { Text = L.T("Annulla", "Cancel"), Location = new Point(366, 256), MinimumSize = new Size(90, 30), AutoSize = true, DialogResult = DialogResult.Cancel };
             btnInstall.Click += delegate { DoInstall(); };
             AcceptButton = btnInstall;
             CancelButton = btnCancel;
@@ -358,6 +356,10 @@ namespace AppIP.Setup
                 foreach (var cb in new[] { cbStartup, cbDesktop, cbLaunch }) { cb.Top = y; y = cb.Bottom + 4; }
                 y += 14;
                 btnInstall.Top = btnCancel.Top = y;
+                // Pulsanti allineati a destra: si allargano se la traduzione è lunga
+                btnCancel.Left = ClientSize.Width - 14 - btnCancel.Width;
+                btnInstall.Left = btnCancel.Left - 6 - btnInstall.Width;
+                lblStatus.Width = Math.Max(60, btnInstall.Left - 26);
                 lblStatus.Top = y + 6;
                 ClientSize = new Size(ClientSize.Width, btnInstall.Bottom + 14);
             };
@@ -390,7 +392,7 @@ namespace AppIP.Setup
                 Cursor = Cursors.Default;
                 lblStatus.Text = "";
                 btnInstall.Enabled = btnCancel.Enabled = true;
-                MessageBox.Show(this, L.T("Installazione non riuscita:\n", "Installation failed:\n") + ex.Message, "AppIP", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, L.T("Installazione non riuscita:", "Installation failed:") + "\n" + ex.Message, "AppIP", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }

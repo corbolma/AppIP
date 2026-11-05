@@ -16,11 +16,14 @@ call "%~dp0build.bat" || exit /b 1
 set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
 if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
 if not exist dist mkdir dist
+rem Stesse traduzioni dell'app (lang\*.txt, tranne _template.txt)
+set LANGRES=
+for %%F in (lang\*.txt) do if /i not "%%~nF"=="_template" call set LANGRES=%%LANGRES%% /resource:"%%F",AppIP.lang.%%~nF.txt
 
 "%CSC%" /nologo /codepage:65001 /target:winexe /optimize+ /out:dist\AppIP-Setup-%VER%.exe ^
   /win32icon:appip.ico /win32manifest:setup.manifest /resource:AppIP.exe,AppIP.payload ^
   /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll /r:Microsoft.CSharp.dll ^
-  Setup.cs Version.cs Lang.cs
+  Setup.cs Version.cs Lang.cs %LANGRES%
 if errorlevel 1 (
   echo Compilazione installer fallita.
   exit /b 1

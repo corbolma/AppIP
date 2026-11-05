@@ -276,9 +276,15 @@ namespace AppIP
             Height = 200;
 
             // ----- menu -----
-            // La lingua serve già per le etichette del menu (in demo può essere forzata con "en"/"it")
+            // La lingua serve già per le etichette del menu (in demo: /demo lang=de, oppure "en"; predefinito italiano)
             if (demoArgs != null)
-                L.Set(demoArgs.Any(a => a.TrimStart('/', '-').Equals("en", StringComparison.OrdinalIgnoreCase)) ? "en" : "it");
+            {
+                string dl = "it";
+                foreach (var a in demoArgs.Select(x => x.TrimStart('/', '-')))
+                    if (a.Equals("en", StringComparison.OrdinalIgnoreCase)) dl = "en";
+                    else if (a.StartsWith("lang=", StringComparison.OrdinalIgnoreCase)) dl = a.Substring(5);
+                L.Set(dl);
+            }
             else
                 L.Set(ReadSetting("lang"));
 
@@ -333,7 +339,7 @@ namespace AppIP
             for (int i = 0; i < PingValues.Length; i++)
             {
                 int v = PingValues[i];
-                miPing[i] = v == 0 ? Mi("Disattivato", "Off", null) : Mi("Ogni " + v + " secondi", "Every " + v + " seconds", null);
+                miPing[i] = v == 0 ? Mi("Disattivato", "Off", null) : Mi("Ogni {0} secondi", "Every {0} seconds", null, v);
                 miPing[i].Click += delegate { SetPingInterval(v); SaveSettings(); };
                 miPing[i].Tag = v;
                 miPingMenu.DropDownItems.Add(miPing[i]);
@@ -341,15 +347,17 @@ namespace AppIP
             }
             menu.Items.Add(miPingMenu);
 
-            // Etichetta fissa in entrambe le lingue: si trova anche se non si capisce la lingua attuale
+            // Etichetta fissa in italiano e inglese: si trova anche se non si capisce la lingua attuale.
+            // Le lingue elencate sono quelle incorporate nell'exe (italiano, inglese e i file lang\*.txt).
             var miLangMenu = new ToolStripMenuItem("Lingua / Language");
-            string[] langKeys = { "auto", "it", "en" };
-            miLang = new ToolStripMenuItem[3];
-            for (int i = 0; i < 3; i++)
+            var langKeys = new List<string> { "auto" };
+            langKeys.AddRange(L.All().Select(x => x.Code));
+            miLang = new ToolStripMenuItem[langKeys.Count];
+            for (int i = 0; i < langKeys.Count; i++)
             {
                 string key = langKeys[i];
                 miLang[i] = i == 0 ? Mi("Automatica (come Windows)", "Automatic (same as Windows)", null)
-                                   : new ToolStripMenuItem(i == 1 ? "Italiano" : "English");
+                                   : new ToolStripMenuItem(L.All()[i - 1].Name);
                 miLang[i].Click += delegate { SetLanguage(key); };
                 miLang[i].Tag = key;
                 miLangMenu.DropDownItems.Add(miLang[i]);
@@ -452,10 +460,12 @@ namespace AppIP
         }
 
         // Voce di menu con testo italiano/inglese, aggiornata automaticamente al cambio di lingua.
-        ToolStripMenuItem Mi(string it, string en, EventHandler click)
+        // Con args, il testo contiene segnaposto {0}, {1}... (vedi L.F).
+        ToolStripMenuItem Mi(string it, string en, EventHandler click, params object[] args)
         {
-            var m = new ToolStripMenuItem(L.T(it, en), null, click);
-            relabel.Add(delegate { m.Text = L.T(it, en); });
+            Func<string> text = () => args.Length > 0 ? L.F(it, en, args) : L.T(it, en);
+            var m = new ToolStripMenuItem(text(), null, click);
+            relabel.Add(delegate { m.Text = text(); });
             return m;
         }
 
@@ -466,7 +476,8 @@ namespace AppIP
             UpdateLangChecks();
             SaveSettings();
             if (!demo) UpdateJumpList();
-            if (publicIp == "non disponibile" || publicIp == "unavailable") publicIp = L.T("non disponibile", "unavailable");
+            IPAddress parsedIp; // "non disponibile" va ritradotto; "..." e un indirizzo restano
+            if (publicIp != "..." && !IPAddress.TryParse(publicIp, out parsedIp)) publicIp = L.T("non disponibile", "unavailable");
             UpdateTray();
             ResizeToContent();
             Invalidate();
@@ -891,7 +902,7 @@ namespace AppIP
         void ShowBalloon()
         {
             var sb = new StringBuilder();
-            sb.AppendLine(L.T("IP pubblico: ", "Public IP: ") + publicIp);
+            sb.AppendLine(L.T("IP pubblico", "Public IP") + ": " + publicIp);
             if (vpn != null) sb.AppendLine("VPN: " + vpn.Name + " (" + vpn.IPv4Plain + ")");
             foreach (var l in lines.Take(2))
                 sb.AppendLine(l.Name + ": " + l.IPv4Plain + "\nDNS: " + l.Dns);
@@ -902,9 +913,12 @@ namespace AppIP
         string BuildText()
         {
             var sb = new StringBuilder();
-            sb.AppendLine(L.T("Nome macchina: ", "Computer name: ") + hostName + (domain.Length > 0 ? "." + domain : ""));
-            sb.AppendLine(L.T("IP pubblico:   ", "Public IP:     ") + publicIp);
-            if (vpn != null) sb.AppendLine(L.T("VPN attiva:    ", "Active VPN:    ") + vpn.Name + " (" + vpn.IPv4Plain + ")");
+            // Etichette allineate qualunque sia la loro lunghezza nella lingua corrente
+            string[] head = { L.T("Nome macchina", "Computer name"), L.T("IP pubblico", "Public IP"), L.T("VPN attiva", "Active VPN") };
+            int pad = head.Max(h => h.Length) + 2;
+            sb.AppendLine((head[0] + ":").PadRight(pad) + hostName + (domain.Length > 0 ? "." + domain : ""));
+            sb.AppendLine((head[1] + ":").PadRight(pad) + publicIp);
+            if (vpn != null) sb.AppendLine((head[2] + ":").PadRight(pad) + vpn.Name + " (" + vpn.IPv4Plain + ")");
             foreach (var l in lines)
             {
                 sb.AppendLine();
@@ -945,7 +959,8 @@ namespace AppIP
         // ===================== Disegno =====================
         const int Pad = 14;
         const int RowH = 18;
-        const int ValX = 46;
+        const int MinValX = 46;
+        int ValX = MinValX; // colonna dei valori: si allarga se un'etichetta tradotta è più lunga
         const int GraphH = 34;
 
         Palette Pal()
@@ -1047,6 +1062,7 @@ namespace AppIP
             var p = Pal();
             int W = Width;
             int y = Pad;
+            ValX = Math.Max(MinValX, TextW(L.T("RETE", "SPEED"), fLabel) + 10);
 
             if (g != null)
             {
@@ -1241,7 +1257,7 @@ namespace AppIP
             foreach (var l in allLines)
             {
                 var line = l;
-                string label = l.Name + (l.IsVpn ? "  (VPN)" : l.IsVirtual ? L.T("  (virtuale)", "  (virtual)") : "");
+                string label = l.Name + (l.IsVpn ? "  (VPN)" : l.IsVirtual ? "  (" + L.T("virtuale", "virtual") + ")" : "");
                 var item = new ToolStripMenuItem(label, null, delegate
                 {
                     if (IsShown(line)) { shownIds.Remove(line.Id); hiddenIds.Add(line.Id); }
