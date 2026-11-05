@@ -37,7 +37,7 @@
 ### Come si usa
 - Il widget resta **incollato al desktop** (sotto le finestre, visibile anche con Win+D). Trascinalo dove vuoi.
 - **Clic su un valore** per copiarlo negli appunti.
-- **Tasto destro** sul widget o sull'icona "IP" vicino all'orologio per il menu: schede da mostrare, tema chiaro/scuro, opacità, modalità compatta, ping, sempre in primo piano, avvio con Windows.
+- **Tasto destro** sul widget o sull'icona "IP" vicino all'orologio per il menu: schede da mostrare, tema chiaro/scuro, opacità, modalità compatta, ping, lingua, sempre in primo piano, avvio con Windows e **Informazioni su AppIP** (versione, autore, licenza e link al progetto).
 - Fissata alla barra delle applicazioni, il tasto destro sull'icona offre *Mostra in primo piano*, *Sempre in primo piano* ed *Esci* (solo mentre l'app è in esecuzione).
 
 ### Installazione
@@ -69,7 +69,7 @@ AppIP non raccoglie dati. Le uniche connessioni esterne sono la richiesta dell'I
 **AppIP** is a small *conky*-style desktop widget and tray icon for Windows 10/11 that shows the computer name, IP addresses, gateway, DNS servers, public IP, live network speed with a 60-second graph, Wi-Fi SSID and signal, and active VPN. Optional ping to the gateway and the Internet (off by default).
 
 - The widget sticks to the desktop (below other windows, survives Win+D) and can be dragged anywhere.
-- Click any value to copy it. Right-click for options: adapters to show, light/dark theme, opacity, compact mode, ping interval, always on top, start with Windows.
+- Click any value to copy it. Right-click for options: adapters to show, light/dark theme, opacity, compact mode, ping interval, language, always on top, start with Windows, and **About AppIP** (version, author, license and project link).
 - **Install:** download `AppIP-Setup-X.Y.Z.exe` from [Releases](https://github.com/corbolma/AppIP/releases/latest). Per-user install, no admin rights required. The executable is not code-signed, so SmartScreen may ask you to confirm (*More info → Run anyway*). Silent install: `/silent`.
 - **Build:** run `build-installer.bat` — it uses the C# compiler bundled with Windows (.NET Framework 4.x), no SDK needed.
 - **Privacy:** no telemetry. The only outbound requests are the public-IP lookup and, if enabled, ICMP pings.
@@ -78,4 +78,4 @@ The user interface is available in **English and Italian**: it follows the Windo
 **Translations are welcome**: adding a language is just a text file, no coding required — see [lang/README.md](lang/README.md).
 
 ## Licenza / License
-[MIT](LICENSE)
+[MIT](LICENSE) © 2026 Mauro Corboli
