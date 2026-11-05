@@ -1,6 +1,6 @@
 # Translations helper for AppIP.
 #   powershell -ExecutionPolicy Bypass -File lang-check.ps1
-# - writes lang\_template.txt with every English text found in the sources (L.T / L.F / Mi calls)
+# - writes lang\_template.txt with every English text found in the sources (L.T / L.F / Mi / Toggle calls)
 # - for each lang\<code>.txt reports missing texts, obsolete texts and placeholder mistakes
 param([switch]$Quiet)
 $ErrorActionPreference = 'Stop'
@@ -9,7 +9,7 @@ $langDir = Join-Path $root 'lang'
 
 $lit = '"(?:[^"\\]|\\.)*"'
 $arg = "$lit(?:\s*\+\s*$lit)*"
-$call = [regex]"(?:\bL\.[TF]|\bMi)\(\s*$arg\s*,\s*(?<en>$arg)"
+$call = [regex]"(?:\bL\.[TF]\(|\bMi\(|\bToggle\(\s*\w+\s*,)\s*$arg\s*,\s*(?<en>$arg)"
 
 function Join-Literals([string]$s) {
     $parts = [regex]::Matches($s, '"((?:[^"\\]|\\.)*)"') | ForEach-Object { $_.Groups[1].Value }

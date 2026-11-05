@@ -11,7 +11,10 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -69,7 +72,11 @@ namespace AppIP
     class NetLine
     {
         public string Id, Name, Description, IPv4, IPv4Plain, Gateway, Dns, Mac;
+        public string IPv6 = "", IPv6All = "", Dns6 = "", DhcpServer = "";
         public bool HasGateway, IsVpn, IsVirtual, IsWifi;
+        public bool Dhcp;
+        public DateTime LeaseEnd = DateTime.MinValue; // scadenza del lease DHCP (MinValue = sconosciuta)
+        public Wifi.Info Wi;                         // dettagli Wi-Fi (banda, canale, velocità)
         public string WifiSsid;
         public int WifiSignal = -1;
         public bool WifiDenied;
@@ -94,8 +101,50 @@ namespace AppIP
         [DllImport("wlanapi.dll")] static extern int WlanEnumInterfaces(IntPtr h, IntPtr res, out IntPtr list);
         [DllImport("wlanapi.dll")] static extern int WlanQueryInterface(IntPtr h, ref Guid g, int op, IntPtr res, out int size, out IntPtr data, IntPtr type);
         [DllImport("wlanapi.dll")] static extern void WlanFreeMemory(IntPtr p);
+        [DllImport("wlanapi.dll")] static extern int WlanGetNetworkBssList(IntPtr h, ref Guid g, IntPtr ssid, int bssType, bool secEnabled, IntPtr res, out IntPtr list);
 
-        public class Info { public string Ssid; public int Signal = -1; public bool Denied; }
+        public class Info
+        {
+            public string Ssid; public int Signal = -1; public bool Denied;
+            public int Phy = -1, RxMbps = -1, TxMbps = -1, Channel = -1, FreqMHz = -1, Rssi;
+            public byte[] Bssid;
+
+            public string Band()
+            {
+                int f = FreqMHz;
+                if (f >= 5925) return "6 GHz";
+                if (f >= 4900) return "5 GHz";
+                if (f >= 2400 && f < 2500) return "2.4 GHz";
+                if (Channel > 0) return Channel <= 14 ? "2.4 GHz" : "5 GHz";
+                return "";
+            }
+
+            public int Chan()
+            {
+                int f = FreqMHz;
+                if (f >= 5925) return f == 5935 ? 2 : (f - 5950) / 5;
+                if (f >= 5000) return (f - 5000) / 5;
+                if (f == 2484) return 14;
+                if (f >= 2412 && f < 2484) return (f - 2407) / 5;
+                return Channel;
+            }
+
+            // Generazione dello standard (DOT11_PHY_TYPE)
+            public string Gen()
+            {
+                switch (Phy)
+                {
+                    case 4: return "802.11a";
+                    case 5: return "802.11b";
+                    case 6: return "802.11g";
+                    case 7: return "Wi-Fi 4";
+                    case 8: return "Wi-Fi 5";
+                    case 10: return Band() == "6 GHz" ? "Wi-Fi 6E" : "Wi-Fi 6";
+                    case 11: return "Wi-Fi 7";
+                }
+                return "";
+            }
+        }
 
         static IntPtr handle = IntPtr.Zero;
         static bool unavailable;
@@ -140,8 +189,22 @@ namespace AppIP
                                 }
                                 if (string.IsNullOrEmpty(info.Ssid)) info.Ssid = Marshal.PtrToStringUni(IntPtr.Add(data, 8));
                                 info.Signal = Marshal.ReadInt32(data, 576);
+                                // WLAN_ASSOCIATION_ATTRIBUTES: BSSID @560, tipo PHY @568, velocità rx/tx in kbps @580/@584
+                                info.Bssid = new byte[6];
+                                Marshal.Copy(IntPtr.Add(data, 560), info.Bssid, 0, 6);
+                                info.Phy = Marshal.ReadInt32(data, 568);
+                                int rx = Marshal.ReadInt32(data, 580), tx = Marshal.ReadInt32(data, 584);
+                                if (rx > 0) info.RxMbps = rx / 1000;
+                                if (tx > 0) info.TxMbps = tx / 1000;
                             }
                             finally { WlanFreeMemory(data); }
+                            int csize; IntPtr cdata; // canale (wlan_intf_opcode_channel_number)
+                            if (WlanQueryInterface(handle, ref guid, 8, IntPtr.Zero, out csize, out cdata, IntPtr.Zero) == 0)
+                            {
+                                try { info.Channel = Marshal.ReadInt32(cdata); }
+                                finally { WlanFreeMemory(cdata); }
+                            }
+                            ReadBss(guid, info);
                         }
                         else if (rc == 5) info.Denied = true;
                         res[guid.ToString("B")] = info;
@@ -151,6 +214,29 @@ namespace AppIP
             }
             catch { }
             return res;
+        }
+
+        // Frequenza e RSSI della rete a cui si è connessi, dalla lista BSS in cache (distingue 5 e 6 GHz).
+        static void ReadBss(Guid guid, Info info)
+        {
+            if (info.Bssid == null) return;
+            IntPtr bl;
+            if (WlanGetNetworkBssList(handle, ref guid, IntPtr.Zero, 3, false, IntPtr.Zero, out bl) != 0) return;
+            try
+            {
+                int n = Marshal.ReadInt32(bl, 4);
+                var b = new byte[6];
+                for (int i = 0; i < n && i < 512; i++)
+                {
+                    IntPtr e = IntPtr.Add(bl, 8 + i * 360); // sizeof(WLAN_BSS_ENTRY) = 360
+                    Marshal.Copy(IntPtr.Add(e, 40), b, 0, 6);
+                    if (!b.SequenceEqual(info.Bssid)) continue;
+                    info.Rssi = Marshal.ReadInt32(e, 56);
+                    info.FreqMHz = Marshal.ReadInt32(e, 92) / 1000;
+                    break;
+                }
+            }
+            finally { WlanFreeMemory(bl); }
         }
     }
 
@@ -269,7 +355,7 @@ namespace AppIP
 
         readonly NotifyIcon tray;
         readonly WinTimer infoTimer, fastTimer, flashTimer;
-        readonly ToolStripMenuItem miTopMost, miStartup, miShow, miAdapters, miCompact, miHideVirtual;
+        readonly ToolStripMenuItem miTopMost, miStartup, miShow, miAdapters, miCompact, miHideVirtual, miUpdateAvail;
         readonly ToolStripMenuItem[] miTheme, miOpacity, miLang;
         readonly List<Action> relabel = new List<Action>(); // ritraduce le voci del menu al cambio di lingua
         static readonly int[] OpacityValues = { 100, 90, 80, 70, 60, 50 };
@@ -284,12 +370,14 @@ namespace AppIP
         List<NetLine> allLines = new List<NetLine>();
         List<NetLine> lines = new List<NetLine>();
         NetLine primary, vpn;
-        string publicIp = "...";
+        string publicIp = "...", publicIp6 = "...";
         DateTime lastPublicFetch = DateTime.MinValue;
         int fetching;
 
         // impostazioni
         bool topMostMode, compact, hideVirtual = true;
+        bool showIpv6, showMac = true, showDhcp = true, showWifiInfo = true;
+        bool autoUpdate; // controllo automatico degli aggiornamenti: disattivato di default (niente traffico non richiesto)
         string theme = "auto";
         int opacity = 90;
         HashSet<string> hiddenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -319,17 +407,28 @@ namespace AppIP
 
         bool demo;
 
+        // aggiornamenti
+        string updVersion, updUrl, updSha; // ultima release più recente di questa (null = nessuna)
+        int checkingUpd;
+        DateTime lastUpdCheck = DateTime.MinValue;
+        bool balloonIsUpdate;
+        WinTimer updTimer;
+
         // Dati fittizi per gli screenshot (indirizzi di documentazione RFC 5737 / reti private di esempio).
         void FillDemo(bool withVpn)
         {
             hostName = "DESKTOP-APPIP";
             domain = L.T("esempio.local", "example.local");
             publicIp = "203.0.113.42";
+            publicIp6 = "2001:db8:85a3::42";
             var list = new List<NetLine>
             {
                 new NetLine { Id = "demo-wifi", Name = "Wi-Fi", IPv4 = "192.168.1.50/24", IPv4Plain = "192.168.1.50",
                     Gateway = "192.168.1.1", HasGateway = true, Dns = "192.168.1.1, 1.1.1.1", Mac = "00:11:22:33:44:55",
-                    IsWifi = true, WifiSsid = L.T("Ufficio-WiFi", "Office-WiFi"), WifiSignal = 82 },
+                    IsWifi = true, WifiSsid = L.T("Ufficio-WiFi", "Office-WiFi"), WifiSignal = 82,
+                    IPv6 = "2001:db8:1234:5678::50", IPv6All = "2001:db8:1234:5678::50", Dhcp = true, DhcpServer = "192.168.1.1",
+                    LeaseEnd = DateTime.Now.AddHours(7.5),
+                    Wi = new Wifi.Info { Phy = 10, FreqMHz = 5180, RxMbps = 866, TxMbps = 780, Rssi = -54 } },
                 new NetLine { Id = "demo-eth", Name = "Ethernet", IPv4 = "10.0.0.25/24", IPv4Plain = "10.0.0.25",
                     Gateway = "-", Dns = "10.0.0.10", Mac = "00:11:22:33:44:66" }
             };
@@ -378,6 +477,11 @@ namespace AppIP
 
             var menu = new ContextMenuStrip();
             menu.Items.Add(new ToolStripMenuItem("AppIP " + AppVersion.Text) { Enabled = false });
+            // Compare solo quando c'è una versione più recente
+            miUpdateAvail = new ToolStripMenuItem("", null, delegate { OfferUpdate(); }) { Visible = false };
+            miUpdateAvail.Font = new Font(miUpdateAvail.Font, FontStyle.Bold);
+            relabel.Add(delegate { if (updVersion != null) miUpdateAvail.Text = L.F("Aggiorna ad AppIP {0}...", "Update to AppIP {0}...", updVersion); });
+            menu.Items.Add(miUpdateAvail);
             menu.Items.Add(new ToolStripSeparator());
             miShow = Mi("Mostra widget", "Show widget", delegate { ToggleWidget(); });
             miShow.Checked = true;
@@ -394,6 +498,18 @@ namespace AppIP
                 hideVirtual = !hideVirtual; miHideVirtual.Checked = hideVirtual; SaveSettings(); ApplyFilter();
             });
             menu.Items.Add(miAdapters);
+
+            var miDetails = Mi("Dettagli da mostrare", "Details to show", null);
+            Toggle(miDetails, "IPv6", "IPv6", () => showIpv6, v =>
+            {
+                showIpv6 = v;
+                if (v) { publicIp6 = "..."; lastPublicFetch = DateTime.MinValue; }
+                RefreshInfo();
+            });
+            Toggle(miDetails, "Indirizzo MAC", "MAC address", () => showMac, v => showMac = v);
+            Toggle(miDetails, "DHCP o statico (con scadenza)", "DHCP or static (with lease time)", () => showDhcp, v => showDhcp = v);
+            Toggle(miDetails, "Dettagli Wi-Fi (banda, canale, velocità)", "Wi-Fi details (band, channel, speed)", () => showWifiInfo, v => showWifiInfo = v);
+            menu.Items.Add(miDetails);
 
             var miLook = Mi("Aspetto", "Appearance", null);
             string[] themeKeys = { "auto", "dark", "light" };
@@ -459,6 +575,14 @@ namespace AppIP
             miStartup = Mi("Avvia con Windows", "Start with Windows", delegate { ToggleStartup(); });
             miStartup.Checked = IsStartupEnabled();
             menu.Items.Add(miStartup);
+            var miUpd = Mi("Aggiornamenti", "Updates", null);
+            miUpd.DropDownItems.Add(Mi("Controlla ora", "Check now", delegate { CheckUpdates(true); }));
+            Toggle(miUpd, "Controlla automaticamente (una volta al giorno)", "Check automatically (once a day)", () => autoUpdate, v =>
+            {
+                autoUpdate = v;
+                if (v) CheckUpdates(false);
+            });
+            menu.Items.Add(miUpd);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(Mi("Informazioni su AppIP", "About AppIP", delegate { AboutForm.ShowOnce(tray.Icon); }));
             menu.Items.Add(Mi("Esci", "Exit", delegate { Close(); }));
@@ -472,6 +596,8 @@ namespace AppIP
             tray.Visible = true;
             tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ShowBalloon(); };
             tray.DoubleClick += delegate { ToggleWidget(); };
+            tray.BalloonTipClicked += delegate { if (balloonIsUpdate) { balloonIsUpdate = false; OfferUpdate(); } };
+            tray.BalloonTipClosed += delegate { balloonIsUpdate = false; };
 
             // ----- mouse: trascina per spostare, clic su un valore per copiarlo -----
             MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) { pressing = true; downPt = e.Location; } };
@@ -509,6 +635,7 @@ namespace AppIP
                 var opts = new HashSet<string>(demoArgs.Select(a => a.TrimStart('/', '-').ToLowerInvariant()));
                 theme = opts.Contains("light") ? "light" : "dark";
                 compact = opts.Contains("compact");
+                showIpv6 = opts.Contains("ipv6");
                 opacity = 100;
                 Location = new Point(60, 60);
                 FillDemo(opts.Contains("vpn"));
@@ -537,6 +664,16 @@ namespace AppIP
             fastTimer.Tick += delegate { SampleSpeed(); if (Visible) Invalidate(); };
             fastTimer.Start();
 
+            // Aggiornamenti: primo controllo un minuto dopo l'avvio, poi ogni 24 ore (solo se attivato)
+            updTimer = new WinTimer();
+            updTimer.Interval = 60000;
+            updTimer.Tick += delegate
+            {
+                updTimer.Interval = 600000;
+                if (autoUpdate && DateTime.Now - lastUpdCheck > TimeSpan.FromHours(24)) CheckUpdates(false);
+            };
+            updTimer.Start();
+
             NetworkChange.NetworkAddressChanged += delegate { lastPublicFetch = DateTime.MinValue; SafeRefresh(); };
             NetworkChange.NetworkAvailabilityChanged += delegate { lastPublicFetch = DateTime.MinValue; SafeRefresh(); };
             SystemEvents.UserPreferenceChanged += OnUserPrefChanged;
@@ -558,6 +695,23 @@ namespace AppIP
             return m;
         }
 
+        // Voce con spunta in un sottomenu: legge/scrive un'opzione, salva e ridisegna.
+        ToolStripMenuItem Toggle(ToolStripMenuItem parent, string it, string en, Func<bool> get, Action<bool> set)
+        {
+            var m = Mi(it, en, null);
+            m.Click += delegate
+            {
+                set(!get());
+                m.Checked = get();
+                SaveSettings();
+                ResizeToContent();
+                Invalidate();
+            };
+            parent.DropDownItems.Add(m);
+            parent.DropDownOpening += delegate { m.Checked = get(); };
+            return m;
+        }
+
         void SetLanguage(string key)
         {
             L.Set(key);
@@ -567,6 +721,7 @@ namespace AppIP
             if (!demo) UpdateJumpList();
             IPAddress parsedIp; // "non disponibile" va ritradotto; "..." e un indirizzo restano
             if (publicIp != "..." && !IPAddress.TryParse(publicIp, out parsedIp)) publicIp = L.T("non disponibile", "unavailable");
+            if (publicIp6 != "..." && !IPAddress.TryParse(publicIp6, out parsedIp)) publicIp6 = L.T("non disponibile", "unavailable");
             UpdateTray();
             ResizeToContent();
             Invalidate();
@@ -763,7 +918,29 @@ namespace AppIP
 
                     var props = ni.GetIPProperties();
                     var uni = props.UnicastAddresses.Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork).ToList();
-                    if (uni.Count == 0) continue;
+                    // IPv6 utili: globali (2000::/3) e ULA (fc00::/7); esclusi link-local, site-local e Teredo
+                    var uni6 = props.UnicastAddresses.Where(a => IsUseful6(a.Address)).ToList();
+                    if (uni.Count == 0 && (!showIpv6 || uni6.Count == 0)) continue;
+                    // Da mostrare: preferito, globale prima di ULA, e quello stabile prima dei temporanei (durata maggiore)
+                    var best6 = uni6
+                        .OrderBy(a => Dad(a) == DuplicateAddressDetectionState.Preferred ? 0 : 1)
+                        .ThenBy(a => (a.Address.GetAddressBytes()[0] & 0xE0) == 0x20 ? 0 : 1)
+                        .ThenByDescending(a => PrefLife(a))
+                        .FirstOrDefault();
+                    var dns6 = props.DnsAddresses.Where(d => d.AddressFamily == AddressFamily.InterNetworkV6 && !d.IsIPv6SiteLocal).Select(d => d.ToString()).ToList();
+
+                    bool dhcp = false;
+                    try { var v4 = props.GetIPv4Properties(); dhcp = v4 != null && v4.IsDhcpEnabled; } catch { }
+                    var leaseEnd = DateTime.MinValue;
+                    if (dhcp)
+                    {
+                        // AddressValidLifetime di un indirizzo DHCP = secondi che mancano alla scadenza del lease
+                        var da = uni.FirstOrDefault(a => a.PrefixOrigin == PrefixOrigin.Dhcp);
+                        long left = da != null ? ValidLife(da) : 0;
+                        if (left > 0 && left < uint.MaxValue) leaseEnd = DateTime.Now.AddSeconds(left);
+                    }
+                    string dhcpSrv = "";
+                    try { dhcpSrv = string.Join(", ", props.DhcpServerAddresses.Select(a => a.ToString())); } catch { }
 
                     var gw = props.GatewayAddresses
                         .Where(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !g.Address.Equals(IPAddress.Any))
@@ -777,8 +954,14 @@ namespace AppIP
                         Id = ni.Id,
                         Name = ni.Name,
                         Description = ni.Description,
-                        IPv4 = string.Join(", ", uni.Select(a => a.Address + "/" + PrefixLen(a))),
-                        IPv4Plain = string.Join(", ", uni.Select(a => a.Address.ToString())),
+                        IPv4 = uni.Count > 0 ? string.Join(", ", uni.Select(a => a.Address + "/" + PrefixLen(a))) : "-",
+                        IPv4Plain = uni.Count > 0 ? string.Join(", ", uni.Select(a => a.Address.ToString())) : "-",
+                        IPv6 = best6 != null ? best6.Address.ToString() : "",
+                        IPv6All = string.Join(", ", uni6.Select(a => a.Address + "/" + PrefixLen(a))),
+                        Dns6 = string.Join(", ", dns6),
+                        Dhcp = dhcp && uni.Count > 0,
+                        LeaseEnd = leaseEnd,
+                        DhcpServer = dhcpSrv,
                         Gateway = gw.Count > 0 ? string.Join(", ", gw) : "-",
                         HasGateway = gw.Count > 0,
                         Dns = dns.Count > 0 ? string.Join(", ", dns) : "-",
@@ -795,6 +978,7 @@ namespace AppIP
                         line.WifiSsid = wi.Ssid;
                         line.WifiSignal = wi.Signal;
                         line.WifiDenied = wi.Denied;
+                        line.Wi = wi;
                     }
                     result.Add(line);
                 }
@@ -840,6 +1024,71 @@ namespace AppIP
         static int PrefixLen(UnicastIPAddressInformation a)
         {
             try { return a.PrefixLength; } catch { return 0; }
+        }
+
+        static long PrefLife(UnicastIPAddressInformation a)
+        {
+            try { return a.AddressPreferredLifetime; } catch { return 0; }
+        }
+
+        static long ValidLife(UnicastIPAddressInformation a)
+        {
+            try { return a.AddressValidLifetime; } catch { return 0; }
+        }
+
+        static DuplicateAddressDetectionState Dad(UnicastIPAddressInformation a)
+        {
+            try { return a.DuplicateAddressDetectionState; } catch { return DuplicateAddressDetectionState.Preferred; }
+        }
+
+        static bool IsUseful6(IPAddress a)
+        {
+            if (a.AddressFamily != AddressFamily.InterNetworkV6) return false;
+            if (a.IsIPv6LinkLocal || a.IsIPv6SiteLocal || a.IsIPv6Multicast || a.IsIPv6Teredo || IPAddress.IsLoopback(a)) return false;
+            byte b = a.GetAddressBytes()[0];
+            return (b & 0xE0) == 0x20 || (b & 0xFE) == 0xFC;
+        }
+
+        // Tempo che manca alla scadenza del lease DHCP, in forma breve (45m, 7h, 3g)
+        static string LeftShort(DateTime end)
+        {
+            var t = end - DateTime.Now;
+            if (t.TotalMinutes < 1) return "<1m";
+            if (t.TotalHours < 1) return (int)t.TotalMinutes + "m";
+            if (t.TotalHours < 48) return (int)t.TotalHours + "h";
+            return (int)t.TotalDays + L.T("g", "d");
+        }
+
+        string DhcpTag(NetLine l)
+        {
+            if (!l.Dhcp) return L.T("statico", "static");
+            return l.LeaseEnd > DateTime.Now ? "DHCP · " + LeftShort(l.LeaseEnd) : "DHCP";
+        }
+
+        // Riga Wi-Fi per il widget: "5 GHz · ch 36 · Wi-Fi 6 · 866 Mbps"
+        static string WifiShort(Wifi.Info w)
+        {
+            if (w == null) return "";
+            var parts = new List<string>();
+            if (w.Band().Length > 0) parts.Add(w.Band());
+            if (w.Chan() > 0) parts.Add("ch " + w.Chan());
+            if (w.Gen().Length > 0) parts.Add(w.Gen());
+            int rate = Math.Max(w.RxMbps, w.TxMbps);
+            if (rate > 0) parts.Add(rate + " Mbps");
+            return string.Join(" · ", parts);
+        }
+
+        // Versione completa per "Copia tutto"
+        static string WifiLong(Wifi.Info w)
+        {
+            if (w == null) return "";
+            var parts = new List<string>();
+            if (w.Band().Length > 0) parts.Add(w.Band());
+            if (w.Chan() > 0) parts.Add(L.T("canale", "channel") + " " + w.Chan());
+            if (w.Gen().Length > 0) parts.Add(w.Gen());
+            if (w.RxMbps > 0 || w.TxMbps > 0) parts.Add(L.F("velocità {0}/{1} Mbps (ricezione/invio)", "rate {0}/{1} Mbps (receive/send)", Math.Max(0, w.RxMbps), Math.Max(0, w.TxMbps)));
+            if (w.Rssi < 0) parts.Add(w.Rssi + " dBm");
+            return string.Join(", ", parts);
         }
 
         static string FormatMac(PhysicalAddress pa)
@@ -945,25 +1194,11 @@ namespace AppIP
             lastPublicFetch = DateTime.Now;
             ThreadPool.QueueUserWorkItem(delegate
             {
-                string ip = null;
-                string[] urls = { "https://api.ipify.org", "https://icanhazip.com", "https://checkip.amazonaws.com" };
                 try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch { }
-                foreach (var url in urls)
-                {
-                    try
-                    {
-                        var req = (HttpWebRequest)WebRequest.Create(url);
-                        req.Timeout = 5000;
-                        req.UserAgent = "AppIP";
-                        using (var resp = req.GetResponse())
-                        using (var sr = new StreamReader(resp.GetResponseStream()))
-                        {
-                            IPAddress parsed;
-                            if (IPAddress.TryParse(sr.ReadToEnd().Trim(), out parsed)) { ip = parsed.ToString(); break; }
-                        }
-                    }
-                    catch { }
-                }
+                string ip = FetchIp(AddressFamily.InterNetwork, "https://api.ipify.org", "https://icanhazip.com", "https://checkip.amazonaws.com");
+                // IPv6 pubblico solo se richiesto dal menu (nessuna connessione in più altrimenti)
+                bool want6 = showIpv6;
+                string ip6 = want6 ? FetchIp(AddressFamily.InterNetworkV6, "https://api6.ipify.org", "https://ipv6.icanhazip.com") : null;
                 if (ip == null) lastPublicFetch = DateTime.Now - TimeSpan.FromMinutes(4); // riprova tra ~1 minuto
                 fetching = 0;
                 try
@@ -971,12 +1206,172 @@ namespace AppIP
                     BeginInvoke(new Action(delegate
                     {
                         publicIp = ip ?? L.T("non disponibile", "unavailable");
+                        if (want6) publicIp6 = ip6 ?? L.T("non disponibile", "unavailable");
                         UpdateTray();
                         Invalidate();
                     }));
                 }
                 catch { }
             });
+        }
+
+        static string FetchIp(AddressFamily family, params string[] urls)
+        {
+            foreach (var url in urls)
+            {
+                try
+                {
+                    var req = (HttpWebRequest)WebRequest.Create(url);
+                    req.Timeout = 5000;
+                    req.UserAgent = "AppIP";
+                    using (var resp = req.GetResponse())
+                    using (var sr = new StreamReader(resp.GetResponseStream()))
+                    {
+                        IPAddress parsed;
+                        if (IPAddress.TryParse(sr.ReadToEnd().Trim(), out parsed) && parsed.AddressFamily == family) return parsed.ToString();
+                    }
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        // ===================== Aggiornamenti =====================
+        // Legge l'ultima release da GitHub; propone il download solo dell'installer pubblicato nel repository.
+        void CheckUpdates(bool manual)
+        {
+            if (demo) return;
+            if (Interlocked.Exchange(ref checkingUpd, 1) == 1) return;
+            lastUpdCheck = DateTime.Now;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                string tag = null, url = null, sha = null;
+                try
+                {
+                    try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch { }
+                    var req = (HttpWebRequest)WebRequest.Create(AppVersion.RepoUrl.Replace("https://github.com/", "https://api.github.com/repos/") + "/releases/latest");
+                    req.Timeout = 10000;
+                    req.UserAgent = "AppIP/" + AppVersion.Text;
+                    req.Accept = "application/vnd.github+json";
+                    string json;
+                    using (var resp = req.GetResponse())
+                    using (var sr = new StreamReader(resp.GetResponseStream())) json = sr.ReadToEnd();
+                    var m = Regex.Match(json, "\"tag_name\"\\s*:\\s*\"v?([0-9]+(\\.[0-9]+){1,3})\"");
+                    if (m.Success) tag = m.Groups[1].Value;
+                    m = Regex.Match(json, "\"browser_download_url\"\\s*:\\s*\"(" + Regex.Escape(AppVersion.RepoUrl + "/releases/download/") + "[^\"]+\\.exe)\"");
+                    if (m.Success) url = m.Groups[1].Value;
+                    m = Regex.Match(json, "SHA-256:\\s*`?([0-9a-fA-F]{64})");
+                    if (m.Success) sha = m.Groups[1].Value.ToLowerInvariant();
+                }
+                catch { }
+                checkingUpd = 0;
+                try { BeginInvoke(new Action(delegate { OnUpdateResult(tag, url, sha, manual); })); } catch { }
+            });
+        }
+
+        void OnUpdateResult(string tag, string url, string sha, bool manual)
+        {
+            Version latest;
+            if (tag == null || !Version.TryParse(tag, out latest))
+            {
+                if (manual) Msg(L.T("Impossibile controllare gli aggiornamenti. Verifica la connessione a Internet e riprova.",
+                                    "Could not check for updates. Check your Internet connection and try again."), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (latest > new Version(AppVersion.Text))
+            {
+                bool isNew = updVersion != tag;
+                updVersion = tag; updUrl = url; updSha = sha;
+                miUpdateAvail.Text = L.F("Aggiorna ad AppIP {0}...", "Update to AppIP {0}...", tag);
+                miUpdateAvail.Visible = true;
+                if (manual) OfferUpdate();
+                else if (isNew)
+                {
+                    tray.ShowBalloonTip(10000, L.F("AppIP {0} disponibile", "AppIP {0} available", tag),
+                        L.T("Clicca qui per aggiornare.", "Click here to update."), ToolTipIcon.Info);
+                    balloonIsUpdate = true;
+                }
+            }
+            else if (manual)
+                Msg(L.F("Hai già l'ultima versione di AppIP ({0}).", "You already have the latest version of AppIP ({0}).", AppVersion.Text),
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        void OfferUpdate()
+        {
+            if (updVersion == null) return;
+            string page = AppVersion.RepoUrl + "/releases/tag/v" + updVersion;
+            if (updUrl == null) { OpenUrl(page); return; }
+            var r = Msg(L.F("È disponibile AppIP {0} (installata: {1}).\n\nScaricare e installare ora? L'installer chiuderà AppIP durante l'aggiornamento; le impostazioni restano.\n\nNovità: {2}",
+                            "AppIP {0} is available (installed: {1}).\n\nDownload and install it now? The installer will close AppIP during the update; your settings are kept.\n\nWhat's new: {2}",
+                            updVersion, AppVersion.Text, page), MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+            if (r == DialogResult.Yes) DownloadUpdate(updUrl, updSha, updVersion, page);
+        }
+
+        void DownloadUpdate(string url, string sha, string ver, string page)
+        {
+            balloonIsUpdate = false;
+            tray.ShowBalloonTip(3000, "AppIP", L.F("Download di AppIP {0} in corso...", "Downloading AppIP {0}...", ver), ToolTipIcon.Info);
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                string file = Path.Combine(Path.GetTempPath(), "AppIP-Setup-" + ver + ".exe");
+                string err = null;
+                try
+                {
+                    try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch { }
+                    using (var wc = new WebClient())
+                    {
+                        wc.Headers[HttpRequestHeader.UserAgent] = "AppIP/" + AppVersion.Text;
+                        wc.DownloadFile(url, file);
+                    }
+                    if (sha != null)
+                    {
+                        // Confronta con lo SHA-256 scritto nelle note della release
+                        string got;
+                        using (var st = File.OpenRead(file))
+                        using (var h = SHA256.Create())
+                            got = BitConverter.ToString(h.ComputeHash(st)).Replace("-", "").ToLowerInvariant();
+                        if (got != sha)
+                        {
+                            File.Delete(file);
+                            err = L.T("il file scaricato non corrisponde a quello pubblicato (SHA-256 diverso).", "the downloaded file does not match the published one (SHA-256 mismatch).");
+                        }
+                    }
+                }
+                catch (Exception ex) { err = ex.Message; }
+                try
+                {
+                    BeginInvoke(new Action(delegate
+                    {
+                        if (err == null)
+                        {
+                            try { Process.Start(new ProcessStartInfo(file) { UseShellExecute = true }); return; }
+                            catch (Exception ex) { err = ex.Message; }
+                        }
+                        if (Msg(L.F("Aggiornamento non riuscito: {0}\n\nAprire la pagina di download?", "Update failed: {0}\n\nOpen the download page?", err),
+                                MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                            OpenUrl(page);
+                    }));
+                }
+                catch { }
+            });
+        }
+
+        // MessageBox visibile sopra le altre finestre (il widget sta sotto, sul desktop)
+        static DialogResult Msg(string text, MessageBoxButtons buttons, MessageBoxIcon icon)
+        {
+            using (var owner = new Form { TopMost = true, ShowInTaskbar = false, FormBorderStyle = FormBorderStyle.None,
+                                          StartPosition = FormStartPosition.CenterScreen, Size = new Size(1, 1), Opacity = 0 })
+            {
+                owner.Show();
+                owner.Activate();
+                return MessageBox.Show(owner, text, "AppIP", buttons, icon);
+            }
+        }
+
+        static void OpenUrl(string url)
+        {
+            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
         }
 
         // ===================== Tray / copia =====================
@@ -991,6 +1386,7 @@ namespace AppIP
         void ShowBalloon()
         {
             var sb = new StringBuilder();
+            balloonIsUpdate = false;
             sb.AppendLine(L.T("IP pubblico", "Public IP") + ": " + publicIp);
             if (vpn != null) sb.AppendLine("VPN: " + vpn.Name + " (" + vpn.IPv4Plain + ")");
             foreach (var l in lines.Take(2))
@@ -1003,19 +1399,32 @@ namespace AppIP
         {
             var sb = new StringBuilder();
             // Etichette allineate qualunque sia la loro lunghezza nella lingua corrente
-            string[] head = { L.T("Nome macchina", "Computer name"), L.T("IP pubblico", "Public IP"), L.T("VPN attiva", "Active VPN") };
+            string[] head = { L.T("Nome macchina", "Computer name"), L.T("IP pubblico", "Public IP"), L.T("VPN attiva", "Active VPN"), L.T("IP pubblico IPv6", "Public IPv6") };
             int pad = head.Max(h => h.Length) + 2;
             sb.AppendLine((head[0] + ":").PadRight(pad) + hostName + (domain.Length > 0 ? "." + domain : ""));
             sb.AppendLine((head[1] + ":").PadRight(pad) + publicIp);
+            if (showIpv6) sb.AppendLine((head[3] + ":").PadRight(pad) + publicIp6);
             if (vpn != null) sb.AppendLine((head[2] + ":").PadRight(pad) + vpn.Name + " (" + vpn.IPv4Plain + ")");
             foreach (var l in lines)
             {
                 sb.AppendLine();
                 sb.AppendLine("[" + l.Name + "]" + (l.IsWifi && !string.IsNullOrEmpty(l.WifiSsid) ? " Wi-Fi: " + l.WifiSsid : ""));
                 sb.AppendLine("IP:      " + l.IPv4);
+                if (l.IPv6All.Length > 0) sb.AppendLine("IPv6:    " + l.IPv6All);
                 sb.AppendLine("Gateway: " + l.Gateway);
                 sb.AppendLine("DNS:     " + l.Dns);
+                if (l.Dns6.Length > 0 && l.Dns6 != l.Dns) sb.AppendLine("DNS6:    " + l.Dns6);
                 sb.AppendLine("MAC:     " + l.Mac);
+                if (l.IPv4Plain != "-")
+                {
+                    string d = !l.Dhcp ? L.T("no (IP statico)", "no (static IP)")
+                        : L.T("sì", "yes")
+                          + (l.DhcpServer.Length > 0 ? ", server " + l.DhcpServer : "")
+                          + (l.LeaseEnd > DateTime.Now ? ", " + L.F("lease fino al {0}", "lease until {0}", l.LeaseEnd.ToString("g")) : "");
+                    sb.AppendLine("DHCP:    " + d);
+                }
+                string wl = WifiLong(l.Wi);
+                if (wl.Length > 0) sb.AppendLine("Wi-Fi:   " + wl);
             }
             return sb.ToString();
         }
@@ -1025,6 +1434,7 @@ namespace AppIP
             try
             {
                 Clipboard.SetText(BuildText());
+                balloonIsUpdate = false;
                 tray.ShowBalloonTip(1500, "AppIP", L.T("Informazioni copiate negli appunti", "Information copied to clipboard"), ToolTipIcon.Info);
             }
             catch { }
@@ -1100,7 +1510,14 @@ namespace AppIP
 
         void ResizeToContent()
         {
-            Width = compact ? 270 : 330;
+            int w = compact ? 270 : showIpv6 ? 380 : 330; // gli indirizzi IPv6 sono lunghi
+            if (!compact && showWifiInfo)
+                foreach (var l in lines)
+                {
+                    string ws = WifiShort(l.Wi);
+                    if (ws.Length > 0) w = Math.Max(w, Math.Min(400, 2 * Pad + ValX + TextW(ws, fValue) + 4));
+                }
+            Width = w;
             Height = Render(null);
         }
 
@@ -1124,12 +1541,19 @@ namespace AppIP
         }
 
         // Riga "etichetta  valore"; se copy != null il valore è cliccabile.
-        void Row(Graphics g, Palette p, ref int y, string label, string value, Color vc, string copy)
+        // tag: testo piccolo allineato a destra (es. "DHCP · 7h"), non cliccabile.
+        void Row(Graphics g, Palette p, ref int y, string label, string value, Color vc, string copy, string tag = null)
         {
             if (g != null)
             {
                 DrawT(g, label, fLabel, Pad, y + 2, p.Label);
                 var rect = new Rectangle(Pad + ValX, y, Width - Pad - ValX - Pad, RowH);
+                if (tag != null)
+                {
+                    int tw = TextW(tag, fSmall);
+                    DrawT(g, tag, fSmall, rect.Right - tw, y + 4, p.Label);
+                    rect.Width -= tw + 8;
+                }
                 bool flashing = copy != null && rect == flashRect;
                 TextRenderer.DrawText(g, value, fValue, rect, flashing ? p.Good : vc,
                     TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
@@ -1193,6 +1617,8 @@ namespace AppIP
             if (compact && primary != null)
                 Row(g, p, ref y, "IP", primary.IPv4Plain, p.Value, primary.IPv4Plain);
             Row(g, p, ref y, "PUB", publicIp, p.Pub, publicIp.Contains(".") || publicIp.Contains(":") ? publicIp : null);
+            if (showIpv6 && !compact)
+                Row(g, p, ref y, "PUB6", publicIp6, p.Pub, publicIp6.Contains(":") ? publicIp6 : null);
 
             // Ping (solo se attivato)
             if (pingInterval > 0)
@@ -1253,9 +1679,13 @@ namespace AppIP
                         }
                     }
                     y += 16;
-                    Row(g, p, ref y, "IP", l.IPv4, p.Value, l.IPv4Plain);
+                    Row(g, p, ref y, "IP", l.IPv4, p.Value, l.IPv4Plain, showDhcp && l.IPv4Plain != "-" ? DhcpTag(l) : null);
+                    if (showIpv6 && l.IPv6.Length > 0) Row(g, p, ref y, "IPv6", l.IPv6, p.Value, l.IPv6);
                     Row(g, p, ref y, "GW", l.Gateway, p.Value, l.Gateway);
                     Row(g, p, ref y, "DNS", l.Dns, p.Value, l.Dns);
+                    if (showMac && l.Mac != "-") Row(g, p, ref y, "MAC", l.Mac, p.Value, l.Mac);
+                    string ws = showWifiInfo ? WifiShort(l.Wi) : "";
+                    if (ws.Length > 0) Row(g, p, ref y, "Wi-Fi", ws, p.Value, ws);
                     y += 8;
                 }
                 y -= 8;
@@ -1434,6 +1864,11 @@ namespace AppIP
                     if (d.TryGetValue("visible", out v)) visible = v != "0";
                     if (d.TryGetValue("compact", out v)) compact = v == "1";
                     if (d.TryGetValue("hideVirtual", out v)) hideVirtual = v != "0";
+                    if (d.TryGetValue("ipv6", out v)) showIpv6 = v == "1";
+                    if (d.TryGetValue("mac", out v)) showMac = v != "0";
+                    if (d.TryGetValue("dhcp", out v)) showDhcp = v != "0";
+                    if (d.TryGetValue("wifiinfo", out v)) showWifiInfo = v != "0";
+                    if (d.TryGetValue("updates", out v)) autoUpdate = v == "1";
                     if (d.TryGetValue("theme", out v) && (v == "auto" || v == "dark" || v == "light")) theme = v;
                     int op;
                     if (d.TryGetValue("ping", out v) && int.TryParse(v, out op) && PingValues.Contains(op)) pingInterval = op;
@@ -1472,6 +1907,11 @@ namespace AppIP
                 sb.Append("hidden=").Append(string.Join("|", hiddenIds)).Append('\n');
                 sb.Append("shown=").Append(string.Join("|", shownIds)).Append('\n');
                 sb.Append("lang=").Append(L.Setting).Append('\n');
+                sb.Append("ipv6=").Append(showIpv6 ? "1" : "0").Append('\n');
+                sb.Append("mac=").Append(showMac ? "1" : "0").Append('\n');
+                sb.Append("dhcp=").Append(showDhcp ? "1" : "0").Append('\n');
+                sb.Append("wifiinfo=").Append(showWifiInfo ? "1" : "0").Append('\n');
+                sb.Append("updates=").Append(autoUpdate ? "1" : "0").Append('\n');
                 File.WriteAllText(settingsPath, sb.ToString());
             }
             catch { }
