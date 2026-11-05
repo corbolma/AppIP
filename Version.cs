@@ -2,13 +2,13 @@
 using System.Reflection;
 
 [assembly: AssemblyProduct("AppIP")]
-[assembly: AssemblyVersion("1.0.1.0")]
-[assembly: AssemblyFileVersion("1.0.1.0")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
 
 namespace AppIP
 {
     static class AppVersion
     {
-        public const string Text = "1.0.1";
+        public const string Text = "1.1.0";
     }
 }
