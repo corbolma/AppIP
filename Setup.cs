@@ -139,7 +139,7 @@ namespace AppIP.Setup
                 k.SetValue("DisplayVersion", AppVersion.Text);
                 k.SetValue("VersionMajor", Current.Major, RegistryValueKind.DWord);
                 k.SetValue("VersionMinor", Current.Minor, RegistryValueKind.DWord);
-                k.SetValue("Publisher", "AppIP");
+                k.SetValue("Publisher", AppVersion.Author);
                 k.SetValue("DisplayIcon", ExePath + ",0");
                 k.SetValue("InstallLocation", InstallDir);
                 k.SetValue("UninstallString", "\"" + UninstallerPath + "\" /uninstall");
@@ -343,6 +343,8 @@ namespace AppIP.Setup
             btnInstall = new Button { Text = action, Location = new Point(240, 256), MinimumSize = new Size(120, 30), AutoSize = true };
             btnCancel = new Button { Text = L.T("Annulla", "Cancel"), Location = new Point(366, 256), MinimumSize = new Size(90, 30), AutoSize = true, DialogResult = DialogResult.Cancel };
             btnInstall.Click += delegate { DoInstall(); };
+            // Il form gira con Application.Run (non modale): DialogResult da solo non lo chiude
+            btnCancel.Click += delegate { Close(); };
             AcceptButton = btnInstall;
             CancelButton = btnCancel;
 
