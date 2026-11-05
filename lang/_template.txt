@@ -3,6 +3,9 @@
 # Keep {0}, {1} placeholders and \n line breaks. Empty lines stay in English.
 
 language = 
+About AppIP = 
+IP, computer name, DNS, speed and Wi-Fi on your desktop = 
+MIT License = 
 example.local = 
 Office-WiFi = 
 Show widget = 
@@ -52,12 +55,10 @@ Reinstall =
 Version {0} is already installed. You can reinstall it (your settings will be kept). = 
 Install anyway = 
 Warning: a newer version ({0}) is installed. This installer contains the older {1}. Continuing will replace it. = 
-IP, computer name, DNS, speed and Wi-Fi on your desktop = 
 Start AppIP when Windows starts = 
 Create a desktop shortcut = 
 Launch AppIP when finished = 
 Cancel = 
-MIT License = 
 Installing... = 
 AppIP has been installed.\n\nYou can find it in the Start menu. To pin it to the taskbar: Start → right-click AppIP → Pin to taskbar.\n\nTo uninstall it: Settings → Apps → Installed apps → AppIP. = 
 Installation failed: = 

@@ -154,6 +154,94 @@ namespace AppIP
         }
     }
 
+    // Finestra "Informazioni su AppIP": versione, autore, licenza e link al progetto.
+    class AboutForm : Form
+    {
+        static AboutForm open;
+
+        public static void ShowOnce(Icon icon)
+        {
+            if (open == null || open.IsDisposed) open = new AboutForm(icon);
+            open.Show();
+            open.WindowState = FormWindowState.Normal;
+            open.Activate();
+        }
+
+        AboutForm(Icon icon)
+        {
+            Text = L.T("Informazioni su AppIP", "About AppIP");
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = MinimizeBox = false;
+            StartPosition = FormStartPosition.CenterScreen;
+            TopMost = true; // il widget sta sotto le finestre: questa deve vedersi subito
+            AutoScaleDimensions = new SizeF(96f, 96f);
+            AutoScaleMode = AutoScaleMode.Dpi;
+            Font = new Font("Segoe UI", 9f);
+            BackColor = Color.White;
+            ClientSize = new Size(360, 200);
+            if (icon != null) Icon = icon;
+
+            var blue = Color.FromArgb(37, 99, 235);
+            var pic = new PictureBox { Location = new Point(20, 20), Size = new Size(48, 48), SizeMode = PictureBoxSizeMode.Zoom };
+            try
+            {
+                // Le immagini in appip.ico sono PNG: si legge direttamente quella da 64 px
+                // (Icon.ToBitmap non decodifica bene le voci PNG)
+                using (var st = typeof(AboutForm).Assembly.GetManifestResourceStream("AppIP.appip.ico"))
+                using (var ms = new MemoryStream())
+                {
+                    st.CopyTo(ms);
+                    byte[] d = ms.ToArray();
+                    int n = BitConverter.ToUInt16(d, 4);
+                    for (int i = 0; i < n; i++)
+                    {
+                        int e = 6 + 16 * i;
+                        if (d[e] != 64) continue;
+                        int size = BitConverter.ToInt32(d, e + 8), off = BitConverter.ToInt32(d, e + 12);
+                        using (var img = Image.FromStream(new MemoryStream(d, off, size))) pic.Image = new Bitmap(img);
+                        break;
+                    }
+                }
+            }
+            catch { }
+            var title = new Label { Text = "AppIP " + AppVersion.Text, AutoSize = true, Location = new Point(82, 18), Font = new Font("Segoe UI Semibold", 14f) };
+            var desc = new Label
+            {
+                Text = L.T("IP, nome macchina, DNS, velocità e Wi-Fi sul desktop", "IP, computer name, DNS, speed and Wi-Fi on your desktop"),
+                AutoSize = true, MaximumSize = new Size(260, 0), Location = new Point(84, 50), ForeColor = Color.DimGray
+            };
+            var author = new Label { Text = "© 2026 " + AppVersion.Author, AutoSize = true, Location = new Point(84, 90) };
+
+            string lic = L.T("Licenza MIT", "MIT License");
+            var links = new LinkLabel
+            {
+                Text = lic + "  ·  GitHub", AutoSize = true, Location = new Point(84, 112),
+                LinkColor = blue, ActiveLinkColor = blue, LinkBehavior = LinkBehavior.HoverUnderline
+            };
+            links.Links.Clear();
+            links.Links.Add(0, lic.Length, AppVersion.RepoUrl + "/blob/main/LICENSE");
+            links.Links.Add(lic.Length + 5, 6, AppVersion.RepoUrl);
+            links.LinkClicked += (s, e) =>
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo((string)e.Link.LinkData) { UseShellExecute = true }); } catch { }
+            };
+
+            var ok = new Button { Text = "OK", Size = new Size(90, 30), DialogResult = DialogResult.OK };
+            ok.Click += delegate { Close(); };
+            AcceptButton = CancelButton = ok;
+            Controls.AddRange(new Control[] { pic, title, desc, author, links, ok });
+
+            Load += delegate
+            {
+                // Testi sotto la descrizione, qualunque sia la sua altezza (lingua, DPI)
+                author.Top = desc.Bottom + 14;
+                links.Top = author.Bottom + 4;
+                ok.Location = new Point(ClientSize.Width - 16 - ok.Width, links.Bottom + 16);
+                ClientSize = new Size(ClientSize.Width, ok.Bottom + 14);
+            };
+        }
+    }
+
     class WidgetForm : Form
     {
         [DllImport("user32.dll")] static extern IntPtr FindWindow(string cls, string name);
@@ -372,6 +460,7 @@ namespace AppIP
             miStartup.Checked = IsStartupEnabled();
             menu.Items.Add(miStartup);
             menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(Mi("Informazioni su AppIP", "About AppIP", delegate { AboutForm.ShowOnce(tray.Icon); }));
             menu.Items.Add(Mi("Esci", "Exit", delegate { Close(); }));
             ContextMenuStrip = menu;
 
