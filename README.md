@@ -1,24 +1,28 @@
 # Statistiche AppIP
 
-Aggiornato il 2026-11-04 (UTC) dalla GitHub Action *Statistiche download*.
+Aggiornato il 2026-11-05 (UTC) dalla GitHub Action *Statistiche download*.
 
 ## Download totali per file
 
 | Versione | File | Download |
 |---|---|---:|
+| v1.1.1 | AppIP-Setup-1.1.1.exe | 2 |
+| v1.1.0 | AppIP-Setup-1.1.0.exe | 2 |
 | v1.0.1 | AppIP-Setup-1.0.1.exe | 1 |
-| | **Totale** | **1** |
+| | **Totale** | **5** |
 
 ## Nuovi download per giorno (ultimi 30 giorni)
 
 | Giorno | Nuovi | Totale |
 |---|---:|---:|
+| 2026-11-05 | 4 | 5 |
 | 2026-11-04 | 1 | 1 |
 
 ## Visite e clone
 
 | Giorno | Visite | Visitatori unici | Clone | Clone unici |
 |---|---:|---:|---:|---:|
+| 2026-11-04 | 0 | 0 | 51 | 22 |
 | 2026-11-03 | 0 | 0 | 31 | 17 |
 
 Dati completi: [downloads.csv](downloads.csv) · [traffic.csv](traffic.csv)
