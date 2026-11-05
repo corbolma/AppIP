@@ -32,6 +32,7 @@
 - **Wi-Fi**: nome della rete e qualità del segnale
 - **VPN** attiva, con badge e IP assegnato
 - **Ping** verso router e Internet (disattivato di default, intervallo configurabile)
+- Interfaccia in **italiano e inglese** (segue la lingua di Windows, modificabile dal menu *Lingua / Language*)
 
 ### Come si usa
 - Il widget resta **incollato al desktop** (sotto le finestre, visibile anche con Win+D). Trascinalo dove vuoi.
@@ -73,7 +74,7 @@ AppIP non raccoglie dati. Le uniche connessioni esterne sono la richiesta dell'I
 - **Build:** run `build-installer.bat` — it uses the C# compiler bundled with Windows (.NET Framework 4.x), no SDK needed.
 - **Privacy:** no telemetry. The only outbound requests are the public-IP lookup and, if enabled, ICMP pings.
 
-The user interface is in Italian.
+The user interface is available in **English and Italian**: it follows the Windows display language and can be changed from the menu (*Lingua / Language*).
 
 ## Licenza / License
 [MIT](LICENSE)

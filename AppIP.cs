@@ -35,7 +35,7 @@ namespace AppIP
         [STAThread]
         static void Main(string[] args)
         {
-            // /demo [light] [vpn] [compact]: finestra con dati fittizi per gli screenshot, indipendente dall'istanza normale
+            // /demo [light] [vpn] [compact] [en]: finestra con dati fittizi per gli screenshot, indipendente dall'istanza normale
             if (args.Length > 0 && args[0].Equals("/demo", StringComparison.OrdinalIgnoreCase))
             {
                 Application.EnableVisualStyles();
@@ -182,7 +182,8 @@ namespace AppIP
         readonly NotifyIcon tray;
         readonly WinTimer infoTimer, fastTimer, flashTimer;
         readonly ToolStripMenuItem miTopMost, miStartup, miShow, miAdapters, miCompact, miHideVirtual;
-        readonly ToolStripMenuItem[] miTheme, miOpacity;
+        readonly ToolStripMenuItem[] miTheme, miOpacity, miLang;
+        readonly List<Action> relabel = new List<Action>(); // ritraduce le voci del menu al cambio di lingua
         static readonly int[] OpacityValues = { 100, 90, 80, 70, 60, 50 };
         readonly Font fTitle = new Font("Segoe UI Semibold", 13f);
         readonly Font fLabel = new Font("Segoe UI", 8.5f);
@@ -234,13 +235,13 @@ namespace AppIP
         void FillDemo(bool withVpn)
         {
             hostName = "DESKTOP-APPIP";
-            domain = "esempio.local";
+            domain = L.T("esempio.local", "example.local");
             publicIp = "203.0.113.42";
             var list = new List<NetLine>
             {
                 new NetLine { Id = "demo-wifi", Name = "Wi-Fi", IPv4 = "192.168.1.50/24", IPv4Plain = "192.168.1.50",
                     Gateway = "192.168.1.1", HasGateway = true, Dns = "192.168.1.1, 1.1.1.1", Mac = "00:11:22:33:44:55",
-                    IsWifi = true, WifiSsid = "Ufficio-WiFi", WifiSignal = 82 },
+                    IsWifi = true, WifiSsid = L.T("Ufficio-WiFi", "Office-WiFi"), WifiSignal = 82 },
                 new NetLine { Id = "demo-eth", Name = "Ethernet", IPv4 = "10.0.0.25/24", IPv4Plain = "10.0.0.25",
                     Gateway = "-", Dns = "10.0.0.10", Mac = "00:11:22:33:44:66" }
             };
@@ -275,38 +276,45 @@ namespace AppIP
             Height = 200;
 
             // ----- menu -----
+            // La lingua serve già per le etichette del menu (in demo può essere forzata con "en"/"it")
+            if (demoArgs != null)
+                L.Set(demoArgs.Any(a => a.TrimStart('/', '-').Equals("en", StringComparison.OrdinalIgnoreCase)) ? "en" : "it");
+            else
+                L.Set(ReadSetting("lang"));
+
             var menu = new ContextMenuStrip();
             menu.Items.Add(new ToolStripMenuItem("AppIP " + AppVersion.Text) { Enabled = false });
             menu.Items.Add(new ToolStripSeparator());
-            miShow = new ToolStripMenuItem("Mostra widget", null, delegate { ToggleWidget(); });
+            miShow = Mi("Mostra widget", "Show widget", delegate { ToggleWidget(); });
             miShow.Checked = true;
             menu.Items.Add(miShow);
-            menu.Items.Add(new ToolStripMenuItem("Aggiorna", null, delegate { lastPublicFetch = DateTime.MinValue; RefreshInfo(); }));
-            menu.Items.Add(new ToolStripMenuItem("Copia tutto", null, delegate { CopyAll(); }));
+            menu.Items.Add(Mi("Aggiorna", "Refresh", delegate { lastPublicFetch = DateTime.MinValue; RefreshInfo(); }));
+            menu.Items.Add(Mi("Copia tutto", "Copy all", delegate { CopyAll(); }));
             menu.Items.Add(new ToolStripSeparator());
 
-            miAdapters = new ToolStripMenuItem("Schede di rete");
-            miAdapters.DropDownItems.Add("(nessuna)");
+            miAdapters = Mi("Schede di rete", "Network adapters", null);
+            miAdapters.DropDownItems.Add("-");
             miAdapters.DropDownOpening += delegate { BuildAdaptersMenu(); };
-            miHideVirtual = new ToolStripMenuItem("Nascondi schede virtuali", null, delegate
+            miHideVirtual = Mi("Nascondi schede virtuali", "Hide virtual adapters", delegate
             {
                 hideVirtual = !hideVirtual; miHideVirtual.Checked = hideVirtual; SaveSettings(); ApplyFilter();
             });
             menu.Items.Add(miAdapters);
 
-            var miLook = new ToolStripMenuItem("Aspetto");
+            var miLook = Mi("Aspetto", "Appearance", null);
             string[] themeKeys = { "auto", "dark", "light" };
-            string[] themeNames = { "Tema automatico", "Tema scuro", "Tema chiaro" };
+            string[] themeIt = { "Tema automatico", "Tema scuro", "Tema chiaro" };
+            string[] themeEn = { "Automatic theme", "Dark theme", "Light theme" };
             miTheme = new ToolStripMenuItem[3];
             for (int i = 0; i < 3; i++)
             {
                 string key = themeKeys[i];
-                miTheme[i] = new ToolStripMenuItem(themeNames[i], null, delegate { theme = key; ApplyLook(); SaveSettings(); });
+                miTheme[i] = Mi(themeIt[i], themeEn[i], delegate { theme = key; ApplyLook(); SaveSettings(); });
                 miTheme[i].Tag = key;
                 miLook.DropDownItems.Add(miTheme[i]);
             }
             miLook.DropDownItems.Add(new ToolStripSeparator());
-            var miOp = new ToolStripMenuItem("Opacità");
+            var miOp = Mi("Opacità", "Opacity", null);
             miOpacity = new ToolStripMenuItem[OpacityValues.Length];
             for (int i = 0; i < OpacityValues.Length; i++)
             {
@@ -316,7 +324,7 @@ namespace AppIP
                 miOp.DropDownItems.Add(miOpacity[i]);
             }
             miLook.DropDownItems.Add(miOp);
-            miCompact = new ToolStripMenuItem("Modalità compatta", null, delegate { compact = !compact; ApplyLook(); SaveSettings(); });
+            miCompact = Mi("Modalità compatta", "Compact mode", delegate { compact = !compact; ApplyLook(); SaveSettings(); });
             miLook.DropDownItems.Add(miCompact);
             menu.Items.Add(miLook);
 
@@ -325,20 +333,38 @@ namespace AppIP
             for (int i = 0; i < PingValues.Length; i++)
             {
                 int v = PingValues[i];
-                miPing[i] = new ToolStripMenuItem(v == 0 ? "Disattivato" : "Ogni " + v + " secondi", null, delegate { SetPingInterval(v); SaveSettings(); });
+                miPing[i] = v == 0 ? Mi("Disattivato", "Off", null) : Mi("Ogni " + v + " secondi", "Every " + v + " seconds", null);
+                miPing[i].Click += delegate { SetPingInterval(v); SaveSettings(); };
                 miPing[i].Tag = v;
                 miPingMenu.DropDownItems.Add(miPing[i]);
                 if (v == 0) miPingMenu.DropDownItems.Add(new ToolStripSeparator());
             }
             menu.Items.Add(miPingMenu);
 
-            miTopMost = new ToolStripMenuItem("Sempre in primo piano", null, delegate { SetTopMost(!topMostMode); SaveSettings(); });
+            // Etichetta fissa in entrambe le lingue: si trova anche se non si capisce la lingua attuale
+            var miLangMenu = new ToolStripMenuItem("Lingua / Language");
+            string[] langKeys = { "auto", "it", "en" };
+            miLang = new ToolStripMenuItem[3];
+            for (int i = 0; i < 3; i++)
+            {
+                string key = langKeys[i];
+                miLang[i] = i == 0 ? Mi("Automatica (come Windows)", "Automatic (same as Windows)", null)
+                                   : new ToolStripMenuItem(i == 1 ? "Italiano" : "English");
+                miLang[i].Click += delegate { SetLanguage(key); };
+                miLang[i].Tag = key;
+                miLangMenu.DropDownItems.Add(miLang[i]);
+                if (i == 0) miLangMenu.DropDownItems.Add(new ToolStripSeparator());
+            }
+            menu.Items.Add(miLangMenu);
+            UpdateLangChecks();
+
+            miTopMost = Mi("Sempre in primo piano", "Always on top", delegate { SetTopMost(!topMostMode); SaveSettings(); });
             menu.Items.Add(miTopMost);
-            miStartup = new ToolStripMenuItem("Avvia con Windows", null, delegate { ToggleStartup(); });
+            miStartup = Mi("Avvia con Windows", "Start with Windows", delegate { ToggleStartup(); });
             miStartup.Checked = IsStartupEnabled();
             menu.Items.Add(miStartup);
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add(new ToolStripMenuItem("Esci", null, delegate { Close(); }));
+            menu.Items.Add(Mi("Esci", "Exit", delegate { Close(); }));
             ContextMenuStrip = menu;
 
             // ----- tray -----
@@ -425,6 +451,45 @@ namespace AppIP
             RefreshInfo();
         }
 
+        // Voce di menu con testo italiano/inglese, aggiornata automaticamente al cambio di lingua.
+        ToolStripMenuItem Mi(string it, string en, EventHandler click)
+        {
+            var m = new ToolStripMenuItem(L.T(it, en), null, click);
+            relabel.Add(delegate { m.Text = L.T(it, en); });
+            return m;
+        }
+
+        void SetLanguage(string key)
+        {
+            L.Set(key);
+            foreach (var a in relabel) a();
+            UpdateLangChecks();
+            SaveSettings();
+            if (!demo) UpdateJumpList();
+            if (publicIp == "non disponibile" || publicIp == "unavailable") publicIp = L.T("non disponibile", "unavailable");
+            UpdateTray();
+            ResizeToContent();
+            Invalidate();
+        }
+
+        void UpdateLangChecks()
+        {
+            foreach (var m in miLang) m.Checked = (string)m.Tag == L.Setting;
+        }
+
+        // Legge un singolo valore da settings.txt (serve prima di costruire il menu).
+        string ReadSetting(string key)
+        {
+            try
+            {
+                if (File.Exists(settingsPath))
+                    foreach (var ln in File.ReadAllLines(settingsPath))
+                        if (ln.StartsWith(key + "=")) return ln.Substring(key.Length + 1).Trim();
+            }
+            catch { }
+            return null;
+        }
+
         void ListenCommand(string name, Action action)
         {
             var ev = new EventWaitHandle(false, EventResetMode.AutoReset, EventPrefix + name);
@@ -466,17 +531,20 @@ namespace AppIP
                 jl.ShowRecentCategory = false;
                 jl.JumpItems.Add(new System.Windows.Shell.JumpTask
                 {
-                    Title = "Mostra in primo piano", Description = "Porta il widget sopra le altre finestre",
+                    Title = L.T("Mostra in primo piano", "Bring to front"),
+                    Description = L.T("Porta il widget sopra le altre finestre", "Show the widget above other windows"),
                     ApplicationPath = exe, Arguments = "/front", IconResourcePath = exe
                 });
                 jl.JumpItems.Add(new System.Windows.Shell.JumpTask
                 {
-                    Title = "Sempre in primo piano (sì/no)", Description = "Attiva o disattiva Sempre in primo piano",
+                    Title = L.T("Sempre in primo piano (sì/no)", "Always on top (on/off)"),
+                    Description = L.T("Attiva o disattiva Sempre in primo piano", "Turn Always on top on or off"),
                     ApplicationPath = exe, Arguments = "/topmost", IconResourcePath = exe
                 });
                 jl.JumpItems.Add(new System.Windows.Shell.JumpTask
                 {
-                    Title = "Esci da AppIP", Description = "Chiude l'app se è aperta",
+                    Title = L.T("Esci da AppIP", "Exit AppIP"),
+                    Description = L.T("Chiude l'app se è aperta", "Closes the app if it is running"),
                     ApplicationPath = exe, Arguments = "/exit", IconResourcePath = exe
                 });
                 jl.Apply();
@@ -802,7 +870,7 @@ namespace AppIP
                 {
                     BeginInvoke(new Action(delegate
                     {
-                        publicIp = ip ?? "non disponibile";
+                        publicIp = ip ?? L.T("non disponibile", "unavailable");
                         UpdateTray();
                         Invalidate();
                     }));
@@ -814,7 +882,7 @@ namespace AppIP
         // ===================== Tray / copia =====================
         void UpdateTray()
         {
-            string ip = primary != null ? primary.IPv4Plain : "nessuna rete";
+            string ip = primary != null ? primary.IPv4Plain : L.T("nessuna rete", "no network");
             string t = hostName + "\n" + ip + "\nPub: " + publicIp;
             if (t.Length > 63) t = t.Substring(0, 63);
             tray.Text = t;
@@ -823,7 +891,7 @@ namespace AppIP
         void ShowBalloon()
         {
             var sb = new StringBuilder();
-            sb.AppendLine("IP pubblico: " + publicIp);
+            sb.AppendLine(L.T("IP pubblico: ", "Public IP: ") + publicIp);
             if (vpn != null) sb.AppendLine("VPN: " + vpn.Name + " (" + vpn.IPv4Plain + ")");
             foreach (var l in lines.Take(2))
                 sb.AppendLine(l.Name + ": " + l.IPv4Plain + "\nDNS: " + l.Dns);
@@ -834,9 +902,9 @@ namespace AppIP
         string BuildText()
         {
             var sb = new StringBuilder();
-            sb.AppendLine("Nome macchina: " + hostName + (domain.Length > 0 ? "." + domain : ""));
-            sb.AppendLine("IP pubblico:   " + publicIp);
-            if (vpn != null) sb.AppendLine("VPN attiva:    " + vpn.Name + " (" + vpn.IPv4Plain + ")");
+            sb.AppendLine(L.T("Nome macchina: ", "Computer name: ") + hostName + (domain.Length > 0 ? "." + domain : ""));
+            sb.AppendLine(L.T("IP pubblico:   ", "Public IP:     ") + publicIp);
+            if (vpn != null) sb.AppendLine(L.T("VPN attiva:    ", "Active VPN:    ") + vpn.Name + " (" + vpn.IPv4Plain + ")");
             foreach (var l in lines)
             {
                 sb.AppendLine();
@@ -854,7 +922,7 @@ namespace AppIP
             try
             {
                 Clipboard.SetText(BuildText());
-                tray.ShowBalloonTip(1500, "AppIP", "Informazioni copiate negli appunti", ToolTipIcon.Info);
+                tray.ShowBalloonTip(1500, "AppIP", L.T("Informazioni copiate negli appunti", "Information copied to clipboard"), ToolTipIcon.Info);
             }
             catch { }
         }
@@ -963,7 +1031,7 @@ namespace AppIP
                     TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
                 if (flashing)
                 {
-                    string ok = "copiato ✓";
+                    string ok = L.T("copiato ✓", "copied ✓");
                     int w = TextW(ok, fSmall);
                     using (var b = new SolidBrush(p.Back)) g.FillRectangle(b, rect.Right - w - 6, y, w + 6, RowH);
                     DrawT(g, ok, fSmall, rect.Right - w, y + 3, p.Good);
@@ -1035,7 +1103,7 @@ namespace AppIP
             // Velocità
             if (g != null)
             {
-                DrawT(g, "RETE", fLabel, Pad, y + 2, p.Label);
+                DrawT(g, L.T("RETE", "SPEED"), fLabel, Pad, y + 2, p.Label);
                 int x = Pad + ValX;
                 x += DrawT(g, "↓ " + FormatRate(rxRate), fValue, x, y + 1, p.Accent) + 14;
                 DrawT(g, "↑ " + FormatRate(txRate), fValue, x, y + 1, p.Good);
@@ -1054,7 +1122,7 @@ namespace AppIP
                 y += 6;
                 if (lines.Count == 0)
                 {
-                    DrawT(g, "Nessuna rete attiva", fValue, Pad, y, p.Bad);
+                    DrawT(g, L.T("Nessuna rete attiva", "No active network"), fValue, Pad, y, p.Bad);
                     y += RowH;
                 }
                 foreach (var l in lines)
@@ -1063,7 +1131,7 @@ namespace AppIP
                     x += DrawT(g, l.Name.ToUpperInvariant(), fLabel, x, y, l.IsVpn ? p.Vpn : p.Accent);
                     if (l.IsWifi)
                     {
-                        string ssid = !string.IsNullOrEmpty(l.WifiSsid) ? l.WifiSsid : (l.WifiDenied ? "nome nascosto (attiva Posizione)" : "");
+                        string ssid = !string.IsNullOrEmpty(l.WifiSsid) ? l.WifiSsid : (l.WifiDenied ? L.T("nome nascosto (attiva Posizione)", "name hidden (turn on Location)") : "");
                         if (ssid.Length > 0) x += DrawT(g, "  " + ssid, fLabel, x, y, p.Value);
                         if (l.WifiSignal >= 0)
                         {
@@ -1101,7 +1169,7 @@ namespace AppIP
             int n = rxHist.Count;
             if (n < 2)
             {
-                DrawT(g, "raccolta dati...", fSmall, r.X + 4, r.Y + 3, p.Label);
+                DrawT(g, L.T("raccolta dati...", "collecting data..."), fSmall, r.X + 4, r.Y + 3, p.Label);
                 return;
             }
             double max = 10 * 1024;
@@ -1162,11 +1230,11 @@ namespace AppIP
         void BuildAdaptersMenu()
         {
             miAdapters.DropDownItems.Clear();
-            if (allLines.Count == 0) miAdapters.DropDownItems.Add(new ToolStripMenuItem("(nessuna scheda attiva)") { Enabled = false });
+            if (allLines.Count == 0) miAdapters.DropDownItems.Add(new ToolStripMenuItem(L.T("(nessuna scheda attiva)", "(no active adapters)")) { Enabled = false });
             foreach (var l in allLines)
             {
                 var line = l;
-                string label = l.Name + (l.IsVpn ? "  (VPN)" : l.IsVirtual ? "  (virtuale)" : "");
+                string label = l.Name + (l.IsVpn ? "  (VPN)" : l.IsVirtual ? L.T("  (virtuale)", "  (virtual)") : "");
                 var item = new ToolStripMenuItem(label, null, delegate
                 {
                     if (IsShown(line)) { shownIds.Remove(line.Id); hiddenIds.Add(line.Id); }
@@ -1182,7 +1250,7 @@ namespace AppIP
             miHideVirtual.Checked = hideVirtual;
             miAdapters.DropDownItems.Add(miHideVirtual);
             if (hiddenIds.Count > 0 || shownIds.Count > 0)
-                miAdapters.DropDownItems.Add(new ToolStripMenuItem("Ripristina predefinite", null, delegate
+                miAdapters.DropDownItems.Add(new ToolStripMenuItem(L.T("Ripristina predefinite", "Restore defaults"), null, delegate
                 {
                     hiddenIds.Clear(); shownIds.Clear(); SaveSettings(); ApplyFilter();
                 }));
@@ -1291,6 +1359,7 @@ namespace AppIP
                 sb.Append("ping=").Append(pingInterval).Append('\n');
                 sb.Append("hidden=").Append(string.Join("|", hiddenIds)).Append('\n');
                 sb.Append("shown=").Append(string.Join("|", shownIds)).Append('\n');
+                sb.Append("lang=").Append(L.Setting).Append('\n');
                 File.WriteAllText(settingsPath, sb.ToString());
             }
             catch { }

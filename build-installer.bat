@@ -20,7 +20,7 @@ if not exist dist mkdir dist
 "%CSC%" /nologo /codepage:65001 /target:winexe /optimize+ /out:dist\AppIP-Setup-%VER%.exe ^
   /win32icon:appip.ico /win32manifest:setup.manifest /resource:AppIP.exe,AppIP.payload ^
   /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll /r:Microsoft.CSharp.dll ^
-  Setup.cs Version.cs
+  Setup.cs Version.cs Lang.cs
 if errorlevel 1 (
   echo Compilazione installer fallita.
   exit /b 1

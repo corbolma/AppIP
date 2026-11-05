@@ -14,7 +14,7 @@ if not exist appip.ico powershell -NoProfile -ExecutionPolicy Bypass -File make-
   /win32icon:appip.ico /resource:appip.ico,AppIP.appip.ico ^
   /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll ^
   /r:"%WPF%\PresentationFramework.dll" /r:"%WPF%\PresentationCore.dll" /r:"%WPF%\WindowsBase.dll" /r:System.Xaml.dll ^
-  AppIP.cs Version.cs
+  AppIP.cs Version.cs Lang.cs
 if errorlevel 1 (
   echo Compilazione fallita.
   exit /b 1

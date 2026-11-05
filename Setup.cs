@@ -25,6 +25,7 @@ namespace AppIP.Setup
         {
             Func<string, bool> has = a => args.Any(x => x.Equals(a, StringComparison.OrdinalIgnoreCase));
             bool silent = has("/silent") || has("/s");
+            L.LoadFromSettings(); // stessa lingua scelta nell'app, altrimenti quella di Windows
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             try
@@ -43,7 +44,7 @@ namespace AppIP.Setup
             }
             catch (Exception ex)
             {
-                if (!silent) MessageBox.Show("Errore: " + ex.Message, "AppIP", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (!silent) MessageBox.Show(L.T("Errore: ", "Error: ") + ex.Message, "AppIP", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return 2;
             }
         }
@@ -121,8 +122,9 @@ namespace AppIP.Setup
             if (!string.Equals(Path.GetFullPath(self), Path.GetFullPath(UninstallerPath), StringComparison.OrdinalIgnoreCase))
                 File.Copy(self, UninstallerPath, true);
 
-            CreateShortcut(StartMenuLnk, ExePath, "Mostra IP, nome macchina e DNS");
-            if (desktop) CreateShortcut(DesktopLnk, ExePath, "Mostra IP, nome macchina e DNS");
+            string desc = L.T("Mostra IP, nome macchina e DNS", "Shows IP, computer name and DNS");
+            CreateShortcut(StartMenuLnk, ExePath, desc);
+            if (desktop) CreateShortcut(DesktopLnk, ExePath, desc);
             else if (File.Exists(DesktopLnk)) File.Delete(DesktopLnk);
 
             using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
@@ -153,7 +155,7 @@ namespace AppIP.Setup
 
         public static bool Uninstall(bool silent)
         {
-            if (!silent && MessageBox.Show("Vuoi disinstallare AppIP?", "Disinstalla AppIP",
+            if (!silent && MessageBox.Show(L.T("Vuoi disinstallare AppIP?", "Do you want to uninstall AppIP?"), L.T("Disinstalla AppIP", "Uninstall AppIP"),
                     MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return false;
 
@@ -180,7 +182,7 @@ namespace AppIP.Setup
                 WorkingDirectory = Path.GetTempPath()
             });
 
-            if (!silent) MessageBox.Show("AppIP è stato disinstallato.", "Disinstalla AppIP", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (!silent) MessageBox.Show(L.T("AppIP è stata disinstallata.", "AppIP has been uninstalled."), L.T("Disinstalla AppIP", "Uninstall AppIP"), MessageBoxButtons.OK, MessageBoxIcon.Information);
             return true;
         }
 
@@ -272,25 +274,30 @@ namespace AppIP.Setup
             bool warn = false;
             if (installed == null)
             {
-                action = "Installa";
-                infoText = "AppIP verrà installata solo per il tuo utente, senza permessi di amministratore, nella cartella:";
+                action = L.T("Installa", "Install");
+                infoText = L.T("AppIP verrà installata solo per il tuo utente, senza permessi di amministratore, nella cartella:",
+                               "AppIP will be installed for your user only, without administrator rights, in the folder:");
             }
             else if (installed < cur)
             {
-                action = "Aggiorna";
-                infoText = "Aggiornamento dalla versione " + vi + " alla " + vc + ". Le impostazioni vengono mantenute.";
+                action = L.T("Aggiorna", "Update");
+                infoText = L.T("Aggiornamento dalla versione " + vi + " alla " + vc + ". Le impostazioni vengono mantenute.",
+                               "Update from version " + vi + " to " + vc + ". Your settings will be kept.");
             }
             else if (installed == cur)
             {
-                action = "Reinstalla";
-                infoText = "La versione " + vc + " è già installata. Puoi reinstallarla (le impostazioni vengono mantenute).";
+                action = L.T("Reinstalla", "Reinstall");
+                infoText = L.T("La versione " + vc + " è già installata. Puoi reinstallarla (le impostazioni vengono mantenute).",
+                               "Version " + vc + " is already installed. You can reinstall it (your settings will be kept).");
             }
             else
             {
-                action = "Installa comunque";
+                action = L.T("Installa comunque", "Install anyway");
                 warn = true;
-                infoText = "Attenzione: è installata una versione più recente (" + vi + "). Questo installer contiene la " + vc +
-                           ", più vecchia. Continuando la sostituirai.";
+                infoText = L.T("Attenzione: è installata una versione più recente (" + vi + "). Questo installer contiene la " + vc +
+                           ", più vecchia. Continuando la sostituirai.",
+                           "Warning: a newer version (" + vi + ") is installed. This installer contains the older " + vc +
+                           ". Continuing will replace it.");
             }
 
             Text = action + " AppIP";
@@ -314,7 +321,7 @@ namespace AppIP.Setup
             };
             var sub = new Label
             {
-                Text = "IP, nome macchina, DNS, velocità e Wi-Fi sul desktop", ForeColor = Color.FromArgb(220, 230, 255),
+                Text = L.T("IP, nome macchina, DNS, velocità e Wi-Fi sul desktop", "IP, computer name, DNS, speed and Wi-Fi on your desktop"), ForeColor = Color.FromArgb(220, 230, 255),
                 AutoSize = true, Location = new Point(90, 50), BackColor = Color.Transparent
             };
             header.Controls.AddRange(new Control[] { pic, title, sub });
@@ -330,13 +337,13 @@ namespace AppIP.Setup
                 Text = Installer.InstallDir, AutoEllipsis = true
             };
 
-            cbStartup = new CheckBox { Text = "Avvia AppIP all'accensione del PC", Location = new Point(22, 164), AutoSize = true, Checked = Installer.StartupEnabled() };
-            cbDesktop = new CheckBox { Text = "Crea un collegamento sul desktop", Location = new Point(22, 188), AutoSize = true };
-            cbLaunch = new CheckBox { Text = "Avvia AppIP al termine", Location = new Point(22, 212), AutoSize = true, Checked = true };
+            cbStartup = new CheckBox { Text = L.T("Avvia AppIP all'accensione del PC", "Start AppIP when Windows starts"), Location = new Point(22, 164), AutoSize = true, Checked = Installer.StartupEnabled() };
+            cbDesktop = new CheckBox { Text = L.T("Crea un collegamento sul desktop", "Create a desktop shortcut"), Location = new Point(22, 188), AutoSize = true };
+            cbLaunch = new CheckBox { Text = L.T("Avvia AppIP al termine", "Launch AppIP when finished"), Location = new Point(22, 212), AutoSize = true, Checked = true };
 
             lblStatus = new Label { Location = new Point(20, 262), Size = new Size(240, 20), ForeColor = Color.DimGray };
             btnInstall = new Button { Text = action, Location = new Point(240, 256), Size = new Size(120, 30) };
-            btnCancel = new Button { Text = "Annulla", Location = new Point(366, 256), Size = new Size(90, 30), DialogResult = DialogResult.Cancel };
+            btnCancel = new Button { Text = L.T("Annulla", "Cancel"), Location = new Point(366, 256), Size = new Size(90, 30), DialogResult = DialogResult.Cancel };
             btnInstall.Click += delegate { DoInstall(); };
             AcceptButton = btnInstall;
             CancelButton = btnCancel;
@@ -359,7 +366,7 @@ namespace AppIP.Setup
         void DoInstall()
         {
             btnInstall.Enabled = btnCancel.Enabled = false;
-            lblStatus.Text = "Installazione in corso...";
+            lblStatus.Text = L.T("Installazione in corso...", "Installing...");
             Cursor = Cursors.WaitCursor;
             Application.DoEvents();
             try
@@ -367,10 +374,14 @@ namespace AppIP.Setup
                 Installer.Install(cbStartup.Checked, cbDesktop.Checked, cbLaunch.Checked);
                 Cursor = Cursors.Default;
                 MessageBox.Show(this,
-                    "AppIP è stata installata.\n\n" +
-                    "La trovi nel menu Start. Per fissarla alla barra delle applicazioni: " +
-                    "Start → tasto destro su AppIP → Aggiungi alla barra delle applicazioni.\n\n" +
-                    "Per disinstallarla: Impostazioni → App → App installate → AppIP.",
+                    L.T("AppIP è stata installata.\n\n" +
+                        "La trovi nel menu Start. Per fissarla alla barra delle applicazioni: " +
+                        "Start → tasto destro su AppIP → Aggiungi alla barra delle applicazioni.\n\n" +
+                        "Per disinstallarla: Impostazioni → App → App installate → AppIP.",
+                        "AppIP has been installed.\n\n" +
+                        "You can find it in the Start menu. To pin it to the taskbar: " +
+                        "Start → right-click AppIP → Pin to taskbar.\n\n" +
+                        "To uninstall it: Settings → Apps → Installed apps → AppIP."),
                     "AppIP", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 Close();
             }
@@ -379,7 +390,7 @@ namespace AppIP.Setup
                 Cursor = Cursors.Default;
                 lblStatus.Text = "";
                 btnInstall.Enabled = btnCancel.Enabled = true;
-                MessageBox.Show(this, "Installazione non riuscita:\n" + ex.Message, "AppIP", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, L.T("Installazione non riuscita:\n", "Installation failed:\n") + ex.Message, "AppIP", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }
