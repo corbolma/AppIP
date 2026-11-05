@@ -57,6 +57,7 @@ Start AppIP when Windows starts =
 Create a desktop shortcut = 
 Launch AppIP when finished = 
 Cancel = 
+MIT License = 
 Installing... = 
 AppIP has been installed.\n\nYou can find it in the Start menu. To pin it to the taskbar: Start → right-click AppIP → Pin to taskbar.\n\nTo uninstall it: Settings → Apps → Installed apps → AppIP. = 
 Installation failed: = 

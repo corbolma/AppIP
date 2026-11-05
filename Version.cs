@@ -2,13 +2,18 @@
 using System.Reflection;
 
 [assembly: AssemblyProduct("AppIP")]
-[assembly: AssemblyVersion("1.1.0.0")]
-[assembly: AssemblyFileVersion("1.1.0.0")]
+[assembly: AssemblyCopyright(AppIP.AppVersion.Copyright)]
+[assembly: AssemblyVersion("1.1.1.0")]
+[assembly: AssemblyFileVersion("1.1.1.0")]
 
 namespace AppIP
 {
     static class AppVersion
     {
-        public const string Text = "1.1.0";
+        // Autore e licenza: compaiono nelle proprietà degli exe e nella finestra dell'installer
+        public const string Author = "Mauro Corboli";
+        public const string Copyright = "Copyright © 2026 " + Author + " - MIT License";
+        public const string RepoUrl = "https://github.com/corbolma/AppIP";
+        public const string Text = "1.1.1";
     }
 }

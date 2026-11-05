@@ -346,7 +346,28 @@ namespace AppIP.Setup
             AcceptButton = btnInstall;
             CancelButton = btnCancel;
 
-            Controls.AddRange(new Control[] { header, info, path, cbStartup, cbDesktop, cbLaunch, lblStatus, btnInstall, btnCancel });
+            // Piè di pagina: autore, licenza e link al progetto
+            var footer = new Panel { Dock = DockStyle.Bottom, Height = 30, BackColor = Color.FromArgb(244, 246, 249) };
+            string owner = "© 2026 " + AppVersion.Author + "  ·  ";
+            string lic = L.T("Licenza MIT", "MIT License");
+            var credits = new LinkLabel
+            {
+                Text = owner + lic, AutoSize = true, Location = new Point(18, 7), ForeColor = Color.DimGray,
+                LinkColor = Color.FromArgb(37, 99, 235), ActiveLinkColor = Color.FromArgb(37, 99, 235),
+                LinkBehavior = LinkBehavior.HoverUnderline, BackColor = Color.Transparent
+            };
+            credits.LinkArea = new LinkArea(owner.Length, lic.Length);
+            credits.LinkClicked += delegate { OpenUrl(AppVersion.RepoUrl + "/blob/main/LICENSE"); };
+            var site = new LinkLabel
+            {
+                Text = "GitHub", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                LinkColor = Color.FromArgb(37, 99, 235), ActiveLinkColor = Color.FromArgb(37, 99, 235),
+                LinkBehavior = LinkBehavior.HoverUnderline, BackColor = Color.Transparent
+            };
+            site.LinkClicked += delegate { OpenUrl(AppVersion.RepoUrl); };
+            footer.Controls.AddRange(new Control[] { credits, site });
+
+            Controls.AddRange(new Control[] { header, info, path, cbStartup, cbDesktop, cbLaunch, lblStatus, btnInstall, btnCancel, footer });
 
             // Dispone i controlli sotto il testo informativo, qualunque sia la sua altezza (righe, DPI)
             Load += delegate
@@ -361,8 +382,14 @@ namespace AppIP.Setup
                 btnInstall.Left = btnCancel.Left - 6 - btnInstall.Width;
                 lblStatus.Width = Math.Max(60, btnInstall.Left - 26);
                 lblStatus.Top = y + 6;
-                ClientSize = new Size(ClientSize.Width, btnInstall.Bottom + 14);
+                ClientSize = new Size(ClientSize.Width, btnInstall.Bottom + 14 + footer.Height);
+                site.Location = new Point(footer.ClientSize.Width - 18 - site.Width, credits.Top);
             };
+        }
+
+        static void OpenUrl(string url)
+        {
+            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
         }
 
         void DoInstall()
