@@ -1054,8 +1054,15 @@ namespace AppIP
                 using (var b = new SolidBrush(vpn != null ? p.Vpn : p.Accent)) g.FillRectangle(b, 0, 0, 3, Height);
             }
 
-            // Titolo + pallino stato Internet
-            DrawT(g, hostName, fTitle, Pad, y, p.Value);
+            // Titolo (cliccabile: copia il nome macchina) + pallino stato Internet
+            if (g != null)
+            {
+                var nameRect = new Rectangle(Pad, y, TextW(hostName, fTitle), 24);
+                bool flashing = hostName.Length > 0 && nameRect == flashRect;
+                DrawT(g, hostName, fTitle, Pad, y, flashing ? p.Good : p.Value);
+                if (flashing) DrawT(g, L.T("copiato ✓", "copied ✓"), fSmall, nameRect.Right + 8, y + 8, p.Good);
+                if (hostName.Length > 0) hits.Add(new Hit { R = nameRect, Text = hostName });
+            }
             if (g != null)
             {
                 int tagRight = W - Pad;
