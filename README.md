@@ -1,6 +1,6 @@
 # Statistiche AppIP
 
-Aggiornato il 2026-11-06 (UTC) dalla GitHub Action *Statistiche download*.
+Aggiornato il 2026-11-07 (UTC) dalla GitHub Action *Statistiche download*.
 
 ## Download totali per file
 
@@ -17,6 +17,7 @@ Aggiornato il 2026-11-06 (UTC) dalla GitHub Action *Statistiche download*.
 
 | Giorno | Nuovi | Totale |
 |---|---:|---:|
+| 2026-11-07 | 0 | 8 |
 | 2026-11-06 | 3 | 8 |
 | 2026-11-05 | 4 | 5 |
 | 2026-11-04 | 1 | 1 |
@@ -25,6 +26,7 @@ Aggiornato il 2026-11-06 (UTC) dalla GitHub Action *Statistiche download*.
 
 | Giorno | Visite | Visitatori unici | Clone | Clone unici |
 |---|---:|---:|---:|---:|
+| 2026-11-06 | 2 | 1 | 27 | 15 |
 | 2026-11-05 | 3 | 3 | 32 | 15 |
 | 2026-11-04 | 0 | 0 | 51 | 22 |
 | 2026-11-03 | 0 | 0 | 31 | 17 |
