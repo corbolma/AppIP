@@ -33,12 +33,14 @@
 - **Wi-Fi**: nome della rete, qualità del segnale, banda (2.4 / 5 / 6 GHz), canale, standard (Wi-Fi 4/5/6/7) e velocità del collegamento
 - **VPN** attiva, con badge e IP assegnato
 - **Ping** verso router e Internet (disattivato di default, intervallo configurabile)
+- **Test velocità** della linea (ADSL, fibra, 4G...): latenza, jitter, download e upload, avviato solo a richiesta dal menu
 - Interfaccia in **italiano e inglese** (segue la lingua di Windows, modificabile dal menu *Lingua / Language*); altre lingue si aggiungono con un semplice file di testo, vedi [lang/README.md](lang/README.md)
 
 ### Come si usa
 - Il widget resta **incollato al desktop** (sotto le finestre, visibile anche con Win+D). Trascinalo dove vuoi.
 - **Clic su un valore** per copiarlo negli appunti.
 - **Tasto destro** sul widget o sull'icona "IP" vicino all'orologio per il menu: schede da mostrare, dettagli da mostrare (IPv6, MAC, DHCP, Wi-Fi), tema chiaro/scuro, opacità, modalità compatta, ping, lingua, sempre in primo piano, avvio con Windows, **aggiornamenti** e **Informazioni su AppIP** (versione, autore, licenza e link al progetto).
+- **Test velocità**: *Test velocità...* nel menu apre una finestra; *Avvia* misura latenza (con jitter), download e upload in circa 20 secondi, *Copia risultato* copia i valori negli appunti. Usa `speed.cloudflare.com`; nel campo *Server* si può indicare un altro server compatibile (solo indirizzo base, test completo) oppure l'indirizzo di un file da scaricare, ad esempio su un server aziendale (solo latenza e download).
 - **Aggiornamenti**: *Aggiornamenti → Controlla ora* confronta la versione con l'ultima release su GitHub e, se ce n'è una nuova, la scarica, ne verifica lo SHA-256 e avvia l'installer. Il controllo automatico (una volta al giorno) è disattivato di default.
 - Fissata alla barra delle applicazioni, il tasto destro sull'icona offre *Mostra in primo piano*, *Sempre in primo piano* ed *Esci* (solo mentre l'app è in esecuzione).
 
@@ -62,19 +64,19 @@ build-installer.bat patch      :: incrementa la versione (1.0.1 -> 1.0.2) e crea
 ```
 
 ### Privacy
-AppIP non raccoglie dati. Le uniche connessioni esterne sono la richiesta dell'IP pubblico (`api.ipify.org`, con `icanhazip.com` e `checkip.amazonaws.com` come riserva) e, solo se li attivi tu: il ping verso `1.1.1.1` / `8.8.8.8`, l'IP pubblico IPv6 (`api6.ipify.org`, riserva `ipv6.icanhazip.com`) e il controllo degli aggiornamenti (`api.github.com`).
+AppIP non raccoglie dati. Le uniche connessioni esterne sono la richiesta dell'IP pubblico (`api.ipify.org`, con `icanhazip.com` e `checkip.amazonaws.com` come riserva) e, solo se li attivi tu: il ping verso `1.1.1.1` / `8.8.8.8`, l'IP pubblico IPv6 (`api6.ipify.org`, riserva `ipv6.icanhazip.com`) e il controllo degli aggiornamenti (`api.github.com`). Il test velocità contatta `speed.cloudflare.com` (o il server indicato) solo quando premi *Avvia*.
 
 ---
 
 ## English
 
-**AppIP** is a small *conky*-style desktop widget and tray icon for Windows 10/11 that shows the computer name, IP addresses, gateway, DNS servers, MAC address, DHCP/static with lease time, public IP, optional IPv6, live network speed with a 60-second graph, Wi-Fi SSID, signal, band, channel, standard and link rate, and active VPN. Optional ping to the gateway and the Internet (off by default).
+**AppIP** is a small *conky*-style desktop widget and tray icon for Windows 10/11 that shows the computer name, IP addresses, gateway, DNS servers, MAC address, DHCP/static with lease time, public IP, optional IPv6, live network speed with a 60-second graph, Wi-Fi SSID, signal, band, channel, standard and link rate, and active VPN. On-demand **speed test** (latency, jitter, download, upload) via `speed.cloudflare.com` or a custom server/file URL. Optional ping to the gateway and the Internet (off by default).
 
 - The widget sticks to the desktop (below other windows, survives Win+D) and can be dragged anywhere.
 - Click any value to copy it. Right-click for options: adapters and details to show (IPv6, MAC, DHCP, Wi-Fi), light/dark theme, opacity, compact mode, ping interval, language, always on top, start with Windows, **updates** (check now, or automatically once a day — off by default; the installer is downloaded from GitHub Releases and its SHA-256 verified), and **About AppIP** (version, author, license and project link).
 - **Install:** download `AppIP-Setup-X.Y.Z.exe` from [Releases](https://github.com/corbolma/AppIP/releases/latest). Per-user install, no admin rights required. The executable is not code-signed, so SmartScreen may ask you to confirm (*More info → Run anyway*). Silent install: `/silent`.
 - **Build:** run `build-installer.bat` — it uses the C# compiler bundled with Windows (.NET Framework 4.x), no SDK needed.
-- **Privacy:** no telemetry. The only outbound requests are the public-IP lookup and, only if you enable them, ICMP pings, the public IPv6 lookup and the update check (`api.github.com`).
+- **Privacy:** no telemetry. The only outbound requests are the public-IP lookup and, only if you enable them, ICMP pings, the public IPv6 lookup and the update check (`api.github.com`); the speed test runs only when you press *Start*.
 
 The user interface is available in **English and Italian**: it follows the Windows display language and can be changed from the menu (*Lingua / Language*).
 **Translations are welcome**: adding a language is just a text file, no coding required — see [lang/README.md](lang/README.md).

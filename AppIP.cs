@@ -379,6 +379,7 @@ namespace AppIP
         bool showIpv6, showMac = true, showDhcp = true, showWifiInfo = true;
         bool autoUpdate; // controllo automatico degli aggiornamenti: disattivato di default (niente traffico non richiesto)
         string theme = "auto";
+        string speedServer = ""; // server del test velocità; vuoto = predefinito (Cloudflare)
         int opacity = 90;
         HashSet<string> hiddenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         HashSet<string> shownIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -488,6 +489,12 @@ namespace AppIP
             menu.Items.Add(miShow);
             menu.Items.Add(Mi("Aggiorna", "Refresh", delegate { lastPublicFetch = DateTime.MinValue; RefreshInfo(); }));
             menu.Items.Add(Mi("Copia tutto", "Copy all", delegate { CopyAll(); }));
+            menu.Items.Add(Mi("Test velocità...", "Speed test...", delegate
+            {
+                SpeedTestForm.ShowOnce(tray.Icon,
+                    () => speedServer.Length > 0 ? speedServer : SpeedTestForm.DefaultServer,
+                    v => { speedServer = v; SaveSettings(); });
+            }));
             menu.Items.Add(new ToolStripSeparator());
 
             miAdapters = Mi("Schede di rete", "Network adapters", null);
@@ -1869,6 +1876,7 @@ namespace AppIP
                     if (d.TryGetValue("dhcp", out v)) showDhcp = v != "0";
                     if (d.TryGetValue("wifiinfo", out v)) showWifiInfo = v != "0";
                     if (d.TryGetValue("updates", out v)) autoUpdate = v == "1";
+                    if (d.TryGetValue("speedtest", out v)) speedServer = v;
                     if (d.TryGetValue("theme", out v) && (v == "auto" || v == "dark" || v == "light")) theme = v;
                     int op;
                     if (d.TryGetValue("ping", out v) && int.TryParse(v, out op) && PingValues.Contains(op)) pingInterval = op;
@@ -1912,6 +1920,7 @@ namespace AppIP
                 sb.Append("dhcp=").Append(showDhcp ? "1" : "0").Append('\n');
                 sb.Append("wifiinfo=").Append(showWifiInfo ? "1" : "0").Append('\n');
                 sb.Append("updates=").Append(autoUpdate ? "1" : "0").Append('\n');
+                sb.Append("speedtest=").Append(speedServer).Append('\n');
                 File.WriteAllText(settingsPath, sb.ToString());
             }
             catch { }
